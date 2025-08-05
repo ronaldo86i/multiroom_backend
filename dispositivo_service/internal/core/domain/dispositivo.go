@@ -1,0 +1,18 @@
+package domain
+
+import "time"
+
+type DispositivoRequest struct {
+	Nombre        string `json:"nombre"`
+	DispositivoId string `json:"dispositivoId"`
+	UsuarioId     int    `json:"usuarioId"`
+}
+
+type DispositivoInfo struct {
+	Id            int            `json:"id"`
+	DispositivoId string         `json:"dispositivoId"`
+	Nombre        string         `json:"nombre"`
+	Estado        string         `json:"estado"`
+	CreadoEn      time.Time      `json:"creadoEn"`
+	Usuario       *UsuarioSimple `json:"usuario,omitempty"`
+}
