@@ -36,14 +36,23 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 
 	// path: /api/v1/dispositivos
 	v1Dispositivos := v1.Group("/dispositivos")
-	v1Dispositivos.Get("", s.handlers.Dispositivo.ObtenerListaDispositivos)
-	v1Dispositivos.Post("", s.handlers.Dispositivo.RegistrarDispositivo)
-	v1Dispositivos.Patch("/:dispositivoId/deshabilitar", s.handlers.Dispositivo.DeshabilitarDispositivo)
-	v1Dispositivos.Patch("/:dispositivoId/habilitar", s.handlers.Dispositivo.HabilitarDispositivo)
+	v1Dispositivos.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.ObtenerListaDispositivos)
+	v1Dispositivos.Get("/byDispositivoId/:dispositivoId", middleware.VerifyUser, s.handlers.Dispositivo.ObtenerDispositivoByDispositivoId)
+	v1Dispositivos.Post("", middleware.VerifyUser, s.handlers.Dispositivo.RegistrarDispositivo)
+	v1Dispositivos.Patch("/:dispositivoId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.HabilitarDispositivo)
+	v1Dispositivos.Patch("/:dispositivoId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.DeshabilitarDispositivo)
 
 	// path: /api/v1/usuarios
 	v1Usuarios := v1.Group("/usuarios")
 	v1Usuarios.Get("/:usuarioId/dispositivos", middleware.VerifyUser, s.handlers.Dispositivo.ObtenerListaDispositivosByUsuarioId)
+
+	v1Clientes := v1.Group("/clientes")
+	v1Clientes.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ObtenerListaClientes)
+	v1Clientes.Get("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ObtenerClienteDetailById)
+	v1Clientes.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.RegistrarCliente)
+	v1Clientes.Put("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ModificarCliente)
+	v1Clientes.Patch("/:clienteId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.HabilitarCliente)
+	v1Clientes.Patch("/:clienteId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.DeshabilitarCliente)
 }
 
 func (s *Server) initEndPointsWS(app *fiber.App) {

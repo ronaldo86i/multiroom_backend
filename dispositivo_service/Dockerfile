@@ -29,6 +29,7 @@ WORKDIR /app
 
 COPY --from=build /app/multiroom_dispositivo .
 
-EXPOSE 8080
+EXPOSE 8081
+EXPOSE 8082
 
 CMD ["/app/multiroom_dispositivo"]

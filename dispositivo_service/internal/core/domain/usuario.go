@@ -49,3 +49,34 @@ type MessageData[T any] struct {
 	Data    T      `json:"data"`
 	Message string `json:"message"`
 }
+
+type UsuarioAdmin struct {
+	Id           int       `json:"id"`
+	Username     string    `json:"username"`
+	Estado       string    `json:"estado"`
+	PasswordHash string    `json:"-"`
+	CreadoEn     time.Time `json:"creadoEn"`
+	Roles        []RolInfo `json:"roles"`
+}
+
+type RolInfo struct {
+	Id     int    `json:"id"`
+	Nombre string `json:"nombre"`
+}
+
+type UsuarioSucursal struct {
+	Id           int        `json:"id"`
+	Username     string     `json:"username"`
+	PasswordHash string     `json:"-"`
+	Estado       string     `json:"estado"`
+	CreadoEn     time.Time  `json:"creadoEn"`
+	EliminadoEn  *time.Time `json:"eliminadoEn,omitempty"`
+	Sucursal     Sucursal   `json:"sucursal"`
+}
+
+type Sucursal struct {
+	Id       int       `json:"id"`
+	Nombre   string    `json:"nombre"`
+	Estado   string    `json:"estado,omitempty"`
+	CreadoEn time.Time `json:"creadoEn"`
+}

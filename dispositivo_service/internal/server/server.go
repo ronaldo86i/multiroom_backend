@@ -37,7 +37,7 @@ func (s *Server) startHTTPServer() {
 		JSONEncoder:           json.Marshal,
 		JSONDecoder:           json.Unmarshal,
 		Prefork:               false,
-		AppName:               "Multiroom Backend",
+		AppName:               "Multiroom Backend dispositivo",
 	})
 
 	app.Use(cors.New(cors.Config{
@@ -71,7 +71,7 @@ func (s *Server) startHTTPServer() {
 func (s *Server) startWebSocketServer() {
 	wsApp := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
-		AppName:               "Multiroom WS",
+		AppName:               "Multiroom Backend WS dispositivo",
 	})
 
 	s.initEndPointsWS(wsApp)

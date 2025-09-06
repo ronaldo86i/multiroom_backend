@@ -14,6 +14,7 @@ type DispositivoRepository interface {
 	DeshabilitarDispositivo(ctx context.Context, id *int) error
 	HabilitarDispositivo(ctx context.Context, id *int) error
 	ObtenerDispositivoById(ctx context.Context, id *int) (*domain.DispositivoInfo, error)
+	ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error)
 }
 
 type DispositivoService interface {
@@ -23,6 +24,7 @@ type DispositivoService interface {
 	DeshabilitarDispositivo(ctx context.Context, id *int) error
 	HabilitarDispositivo(ctx context.Context, id *int) error
 	ObtenerDispositivoById(ctx context.Context, id *int) (*domain.DispositivoInfo, error)
+	ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error)
 }
 
 type DispositivoHandler interface {
@@ -31,6 +33,7 @@ type DispositivoHandler interface {
 	ObtenerListaDispositivosByUsuarioId(c *fiber.Ctx) error
 	DeshabilitarDispositivo(c *fiber.Ctx) error
 	HabilitarDispositivo(c *fiber.Ctx) error
+	ObtenerDispositivoByDispositivoId(c *fiber.Ctx) error
 }
 
 type DispositivoHandlerWS interface {

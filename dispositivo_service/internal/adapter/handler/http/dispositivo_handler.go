@@ -2,7 +2,6 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/dispositivo-service/internal/core/domain"
@@ -15,6 +14,22 @@ import (
 type DispositivoHandler struct {
 	dispositivoService port.DispositivoService
 	rabbitService      port.RabbitMQService
+}
+
+func (d DispositivoHandler) ObtenerDispositivoByDispositivoId(c *fiber.Ctx) error {
+	dispositivoId := c.Params("dispositivoId")
+
+	list, err := d.dispositivoService.ObtenerDispositivoByDispositivoId(c.UserContext(), &dispositivoId)
+	if err != nil {
+		log.Print(err.Error())
+		var errorResponse *datatype.ErrorResponse
+		if errors.As(err, &errorResponse) {
+			return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
+		}
+		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
+	}
+
+	return c.Status(http.StatusOK).JSON(list)
 }
 
 func (d DispositivoHandler) DeshabilitarDispositivo(c *fiber.Ctx) error {
@@ -31,19 +46,19 @@ func (d DispositivoHandler) DeshabilitarDispositivo(c *fiber.Ctx) error {
 		}
 		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
 	}
-	dispositivo, err := d.dispositivoService.ObtenerDispositivoById(c.UserContext(), &dispositivoId)
-	if err != nil {
-		log.Print(err.Error())
-		var errorResponse *datatype.ErrorResponse
-		if errors.As(err, &errorResponse) {
-			return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
-		}
-		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
-	}
-	err = d.rabbitService.Publish(fmt.Sprintf("%s%d", "dispositivo_usuario_", dispositivo.Usuario.Id), &dispositivo)
-	if err != nil {
-		log.Print("Error al publicar estado del dispositivo al usuario:", err.Error())
-	}
+	//dispositivo, err := d.dispositivoService.ObtenerDispositivoById(c.UserContext(), &dispositivoId)
+	//if err != nil {
+	//	log.Print(err.Error())
+	//	var errorResponse *datatype.ErrorResponse
+	//	if errors.As(err, &errorResponse) {
+	//		return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
+	//	}
+	//	return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
+	//}
+	//err = d.rabbitService.Publish(fmt.Sprintf("%s%d", "dispositivo_usuario_", dispositivo.Usuario.Id), &dispositivo)
+	//if err != nil {
+	//	log.Print("Error al publicar estado del dispositivo al usuario:", err.Error())
+	//}
 	return c.Status(http.StatusOK).JSON(util.NewMessage("Dispositivo deshabilitado correctamente"))
 }
 
@@ -62,18 +77,18 @@ func (d DispositivoHandler) HabilitarDispositivo(c *fiber.Ctx) error {
 		return util.HandleServiceError(err)
 	}
 
-	// Obtener el dispositivo actualizado
-	dispositivo, err := d.dispositivoService.ObtenerDispositivoById(ctx, &dispositivoId)
-	if err != nil {
-		log.Println("❌ Error obteniendo dispositivo:", err)
-		return util.HandleServiceError(err)
-	}
-
-	// Publicar mensaje a RabbitMQ (de forma asíncrona opcionalmente)
-	queue := fmt.Sprintf("dispositivo_usuario_%d", dispositivo.Usuario.Id)
-	if err := d.rabbitService.Publish(queue, &dispositivo); err != nil {
-		log.Printf("⚠️ Error publicando a RabbitMQ [%s]: %v", queue, err)
-	}
+	//// Obtener el dispositivo actualizado
+	//dispositivo, err := d.dispositivoService.ObtenerDispositivoById(ctx, &dispositivoId)
+	//if err != nil {
+	//	log.Println("❌ Error obteniendo dispositivo:", err)
+	//	return util.HandleServiceError(err)
+	//}
+	//
+	//// Publicar mensaje a RabbitMQ (de forma asíncrona opcionalmente)
+	//queue := fmt.Sprintf("dispositivo_usuario_%d", dispositivo.Usuario.Id)
+	//if err := d.rabbitService.Publish(queue, &dispositivo); err != nil {
+	//	log.Printf("⚠️ Error publicando a RabbitMQ [%s]: %v", queue, err)
+	//}
 
 	return c.Status(http.StatusOK).JSON(util.NewMessage("Dispositivo habilitado correctamente"))
 }

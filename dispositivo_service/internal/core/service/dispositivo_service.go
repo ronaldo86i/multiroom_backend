@@ -10,6 +10,10 @@ type DispositivoService struct {
 	dispositivoRepository port.DispositivoRepository
 }
 
+func (d DispositivoService) ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error) {
+	return d.dispositivoRepository.ObtenerDispositivoByDispositivoId(ctx, dispositivoId)
+}
+
 func (d DispositivoService) ObtenerDispositivoById(ctx context.Context, id *int) (*domain.DispositivoInfo, error) {
 	return d.dispositivoRepository.ObtenerDispositivoById(ctx, id)
 }

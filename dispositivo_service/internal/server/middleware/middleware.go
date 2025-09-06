@@ -29,6 +29,9 @@ func HostnameMiddleware(c *fiber.Ctx) error {
 }
 
 func VerifyUser(c *fiber.Ctx) error {
+	if c.Locals(util.ContextUserIdKey) != nil {
+		return c.Next()
+	}
 	service1 = os.Getenv("SERVICE_1")
 	httpPort1 = os.Getenv("HTTP_PORT_1")
 	const bearerPrefix = "Bearer "
@@ -66,4 +69,107 @@ func VerifyUser(c *fiber.Ctx) error {
 
 	c.Locals(util.ContextUserIdKey, user.Data.Id)
 	return c.Next()
+}
+
+func VerifyUsuarioSucursal(c *fiber.Ctx) error {
+	if c.Locals(util.ContextUserIdKey) != nil {
+		return c.Next()
+	}
+	service1 = os.Getenv("SERVICE_1")
+	httpPort1 = os.Getenv("HTTP_PORT_1")
+	const bearerPrefix = "Bearer "
+	authHeader := c.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, bearerPrefix) {
+		return c.Status(fiber.StatusUnauthorized).JSON(util.NewMessage("Usuario no autorizado"))
+	}
+	accessToken := strings.TrimPrefix(authHeader, bearerPrefix)
+	accessToken = strings.TrimSpace(accessToken)
+
+	// Crear agente HTTP con header Authorization
+	url := fmt.Sprintf("http://%s:%s/api/v1/auth/sucursal/verify", service1, httpPort1)
+	log.Println(url)
+	agent := fiber.Get(url)
+	agent.Set("Authorization", authHeader)
+
+	// Hacer la solicitud y obtener respuesta
+	statusCode, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		log.Println("Errores en la solicitud:", errs)
+		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage("Error al verificar token"))
+	}
+	log.Println(statusCode, string(body))
+	if statusCode != http.StatusOK {
+		return c.Status(statusCode).SendString(string(body))
+	}
+	var user domain.MessageData[domain.UsuarioSucursal]
+	err := json.Unmarshal(body, &user)
+	if err != nil {
+		log.Println("Error al obtener usuario", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(util.NewMessage("Error al obtener usuario"))
+	}
+	// Guardar en contexto y locals
+	ctx := context.WithValue(c.UserContext(), util.ContextUserIdKey, user.Data.Id)
+	c.SetUserContext(ctx)
+
+	c.Locals(util.ContextUserIdKey, user.Data.Id)
+	return c.Next()
+}
+
+func VerifyUsuarioAdmin(roles ...string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if c.Locals(util.ContextUserIdKey) != nil {
+			return c.Next()
+		}
+		service1 = os.Getenv("SERVICE_1")
+		httpPort1 = os.Getenv("HTTP_PORT_1")
+		const bearerPrefix = "Bearer "
+		authHeader := c.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, bearerPrefix) {
+			return c.Status(fiber.StatusUnauthorized).JSON(util.NewMessage("Usuario no autorizado"))
+		}
+		accessToken := strings.TrimPrefix(authHeader, bearerPrefix)
+		accessToken = strings.TrimSpace(accessToken)
+
+		// Crear agente HTTP con header Authorization
+		url := fmt.Sprintf("http://%s:%s/api/v1/auth/admin/verify", service1, httpPort1)
+		log.Println(url)
+		agent := fiber.Get(url)
+		agent.Set("Authorization", authHeader)
+
+		// Hacer la solicitud y obtener respuesta
+		statusCode, body, errs := agent.Bytes()
+		if len(errs) > 0 {
+			log.Println("Errores en la solicitud:", errs)
+			return c.Status(http.StatusInternalServerError).JSON(util.NewMessage("Error al verificar token"))
+		}
+		log.Println(statusCode, string(body))
+		if statusCode != http.StatusOK {
+			return c.Status(statusCode).SendString(string(body))
+		}
+		var user domain.MessageData[domain.UsuarioAdmin]
+		err := json.Unmarshal(body, &user)
+		if err != nil {
+			log.Println("Error al obtener usuario administrador", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(util.NewMessage("Error al obtener usuario"))
+		}
+		// Guardar en contexto y locals
+		ctx := context.WithValue(c.UserContext(), util.ContextUserIdKey, user.Data.Id)
+		c.SetUserContext(ctx)
+
+		c.Locals(util.ContextUserIdKey, user.Data.Id)
+
+		//Verificar si tiene el rol
+		roleMap := make(map[string]struct{}, len(user.Data.Roles))
+		for _, r := range user.Data.Roles {
+			roleMap[r.Nombre] = struct{}{}
+		}
+		for _, rol := range roles {
+			if _, ok := roleMap[rol]; ok {
+				return c.Next()
+			}
+		}
+
+		return c.Next()
+	}
+
 }

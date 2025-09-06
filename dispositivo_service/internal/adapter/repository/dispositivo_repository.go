@@ -18,6 +18,34 @@ type DispositivoRepository struct {
 	pool *pgxpool.Pool
 }
 
+func (d DispositivoRepository) ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error) {
+	query := `
+SELECT 
+    d.id,
+    d.dispositivo_id,
+    d.nombre,
+    d.estado,
+    d.creado_en,
+    json_build_object(
+    'id',u.id,
+    'username',u.username
+    ) as usuario 
+FROM dispositivo d
+    LEFT JOIN public.usuario u on u.id = d.usuario_id
+WHERE d.dispositivo_id = $1
+LIMIT 1
+`
+	var item domain.DispositivoInfo
+	err := d.pool.QueryRow(ctx, query, *dispositivoId).Scan(&item.Id, &item.DispositivoId, &item.Nombre, &item.Estado, &item.CreadoEn, &item.Usuario)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, datatype.NewNotFoundError("Dispositivo no encontrado")
+		}
+		return nil, datatype.NewInternalServerErrorGeneric()
+	}
+	return &item, nil
+}
+
 func (d DispositivoRepository) ObtenerDispositivoById(ctx context.Context, id *int) (*domain.DispositivoInfo, error) {
 	query := `
 SELECT 
@@ -59,6 +87,7 @@ func (d DispositivoRepository) DeshabilitarDispositivo(ctx context.Context, id *
 			_ = tx.Rollback(ctx)
 		}
 	}()
+
 	query := `UPDATE dispositivo d SET estado = 'Inactivo',eliminado_en = now() WHERE id = $1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {

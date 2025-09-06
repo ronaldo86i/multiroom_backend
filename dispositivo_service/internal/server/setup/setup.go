@@ -16,15 +16,18 @@ import (
 
 type Repository struct {
 	Dispositivo port.DispositivoRepository
+	Cliente     port.ClienteRepository
 }
 
 type Service struct {
 	Dispositivo port.DispositivoService
+	Cliente     port.ClienteService
 	RabbitMQ    port.RabbitMQService
 }
 
 type Handler struct {
 	Dispositivo   port.DispositivoHandler
+	Cliente       port.ClienteHandler
 	DispositivoWS port.DispositivoHandlerWS
 }
 
@@ -76,12 +79,14 @@ func Init() {
 
 		// Repositories
 		repositories.Dispositivo = repository.NewDispositivoRepository(pool)
-
+		repositories.Cliente = repository.NewClienteRepository(pool)
 		// Services
 		services.Dispositivo = service.NewDispositivoService(repositories.Dispositivo)
+		services.Cliente = service.NewClienteService(repositories.Cliente)
 		services.RabbitMQ = service.NewRabbitMQService(os.Getenv("RABBITMQ_URL"))
 		// Handlers
 		handlers.Dispositivo = httpHandler.NewDispositivoHandler(services.Dispositivo, services.RabbitMQ)
+		handlers.Cliente = httpHandler.NewClienteHandler(services.Cliente)
 		handlers.DispositivoWS = wsHandler.NewDispositivoHandlerWS(services.Dispositivo, services.RabbitMQ)
 		instance = d
 	})
