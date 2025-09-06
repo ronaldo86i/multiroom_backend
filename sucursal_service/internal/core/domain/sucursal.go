@@ -2,28 +2,28 @@ package domain
 
 import "time"
 
-type Pais struct {
+type Sucursal struct {
 	Id       int       `json:"id"`
 	Nombre   string    `json:"nombre"`
-	UrlFoto  string    `json:"urlFoto,omitempty"`
-	Estado   string    `json:"estado"`
+	Estado   string    `json:"estado,omitempty"`
 	CreadoEn time.Time `json:"creadoEn"`
 }
 
-type PaisRequest struct {
+type SucursalRequest struct {
 	Nombre string `json:"nombre"`
+	PaisId int    `json:"paisId"`
 }
 
-type PaisInfo struct {
-	Pais
+type SucursalInfo struct {
+	Sucursal
 }
-
-type PaisDetail struct {
-	Pais
+type SucursalDetail struct {
+	Sucursal
 	ActualizadoEn time.Time  `json:"actualizadoEn"`
 	EliminadoEn   *time.Time `json:"eliminadoEn"`
+	Pais          PaisInfo   `json:"pais"`
 }
 
-type PaisId struct {
+type SucursalId struct {
 	Id int `json:"id"`
 }

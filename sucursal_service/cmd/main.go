@@ -1,19 +1,23 @@
 package main
 
 import (
+	"context"
+	"multiroom/sucursal-service/internal/postgresql/routine"
 	"multiroom/sucursal-service/internal/server"
 	"multiroom/sucursal-service/internal/server/setup"
 )
 
 func main() {
-	// Inicializar contenedor de dependencias, variables de entorno y conexión a base de datos
 	setup.Init()
-
 	deps := setup.GetDependencies()
 
-	// Inicializar el servidor HTTP
-	httpServer := server.NewServer(deps.Handler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Iniciar el servidor
+	// Lanza la rutina en segundo plano
+	routine.Init(ctx)
+
+	// Inicializa servidor HTTP
+	httpServer := server.NewServer(deps.Handler)
 	httpServer.Initialize()
 }

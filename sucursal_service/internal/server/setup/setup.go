@@ -8,21 +8,31 @@ import (
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/service"
 
-	//wsHandler "multiroom/sucursal-service/internal/adapter/handler/websocket"
+	"os"
+
+	wsHandler "multiroom/sucursal-service/internal/adapter/handler/websocket"
 	"multiroom/sucursal-service/internal/postgresql"
 	"sync"
 )
 
 type Repository struct {
-	Pais port.PaisRepository
+	Pais     port.PaisRepository
+	Sucursal port.SucursalRepository
+	Sala     port.SalaRepository
 }
 
 type Service struct {
-	Pais port.PaisService
+	Pais     port.PaisService
+	Sucursal port.SucursalService
+	Sala     port.SalaService
+	RabbitMQ port.RabbitMQService
 }
 
 type Handler struct {
-	Pais port.PaisHandler
+	Pais     port.PaisHandler
+	Sucursal port.SucursalHandler
+	Sala     port.SalaHandler
+	SalaWS   port.SalaHandlerWS
 }
 
 type Dependencies struct {
@@ -73,10 +83,19 @@ func Init() {
 
 		// Repositories
 		repositories.Pais = repository.NewPaisRepository(pool)
+		repositories.Sucursal = repository.NewSucursalRepository(pool)
+		repositories.Sala = repository.NewSalaRepository(pool)
 		// Services
+		services.RabbitMQ = service.NewRabbitMQService(os.Getenv("RABBITMQ_URL"))
 		services.Pais = service.NewPaisService(repositories.Pais)
+		services.Sucursal = service.NewSucursalService(repositories.Sucursal)
+		services.Sala = service.NewSalaService(repositories.Sala)
 		// Handlers
 		handlers.Pais = httpHandler.NewPaisHandler(services.Pais)
+		handlers.Sucursal = httpHandler.NewSucursalHandler(services.Sucursal)
+		handlers.SalaWS = wsHandler.NewSalaHandlerWS(services.Sala, services.RabbitMQ)
+		handlers.Sala = httpHandler.NewSalaHandler(services.Sala, services.RabbitMQ)
+
 		instance = d
 	})
 }

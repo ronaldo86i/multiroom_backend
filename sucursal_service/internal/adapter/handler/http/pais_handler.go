@@ -58,7 +58,7 @@ func (p PaisHandler) RegistrarPais(c *fiber.Ctx) error {
 	var paisRequest domain.PaisRequest
 	if err := json.Unmarshal([]byte(c.FormValue("body")), &paisRequest); err != nil {
 		log.Println("Error al deserializar body:", err)
-		return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("Error al leer el formulario"))
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida: datos incompletos o incorrectos"))
 	}
 
 	fileHeader, err := c.FormFile("image")
@@ -76,7 +76,7 @@ func (p PaisHandler) RegistrarPais(c *fiber.Ctx) error {
 		}
 		return datatype.NewInternalServerErrorGeneric()
 	}
-	return c.JSON(util.NewMessageData(domain.PaisId{Id: *paisId}, "País registrado correctamente"))
+	return c.Status(http.StatusCreated).JSON(util.NewMessageData(domain.PaisId{Id: *paisId}, "País registrado correctamente"))
 }
 
 func (p PaisHandler) ModificarPais(c *fiber.Ctx) error {
@@ -87,10 +87,10 @@ func (p PaisHandler) ModificarPais(c *fiber.Ctx) error {
 	var paisRequest domain.PaisRequest
 	if err := json.Unmarshal([]byte(c.FormValue("body")), &paisRequest); err != nil {
 		log.Println("Error al deserializar body:", err)
-		return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("Error al leer el formulario"))
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida: datos incompletos o incorrectos"))
 	}
 
-	fileHeader, err := c.FormFile("images")
+	fileHeader, err := c.FormFile("image")
 	if err != nil {
 		log.Println(err)
 		return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("Error al leer el formulario"))

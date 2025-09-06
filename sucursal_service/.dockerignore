@@ -1,0 +1,4 @@
+public
+/sql
+*.tar
+.env

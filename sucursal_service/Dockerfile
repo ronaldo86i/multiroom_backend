@@ -29,6 +29,7 @@ WORKDIR /app
 
 COPY --from=build /app/multiroom_sucursal .
 
-EXPOSE 8080
+EXPOSE 8083
+EXPOSE 8084
 
 CMD ["/app/multiroom_sucursal"]
