@@ -12,17 +12,22 @@ import (
 )
 
 type Repository struct {
-	Usuario port.UsuarioRepository
+	Usuario         port.UsuarioRepository
+	UsuarioAdmin    port.UsuarioAdminRepository
+	UsuarioSucursal port.UsuarioSucursalRepository
 }
 
 type Service struct {
-	Auth    port.AuthService
-	Usuario port.UsuarioService
+	Auth            port.AuthService
+	Usuario         port.UsuarioService
+	UsuarioAdmin    port.UsuarioAdminService
+	UsuarioSucursal port.UsuarioSucursalService
 }
 
 type Handler struct {
-	Auth    port.AuthHandler
-	Usuario port.UsuarioHandler
+	Auth            port.AuthHandler
+	Usuario         port.UsuarioHandler
+	UsuarioSucursal port.UsuarioSucursalHandler
 }
 
 type Dependencies struct {
@@ -73,14 +78,18 @@ func Init() {
 
 		// Repositories
 		repositories.Usuario = repository.NewUsuarioRepository(pool)
+		repositories.UsuarioAdmin = repository.NewUsuarioAdminRepository(pool)
+		repositories.UsuarioSucursal = repository.NewUsuarioSucursalRepository(pool)
 
 		// Services
-		services.Auth = service.NewAuthService(repositories.Usuario)
+		services.Auth = service.NewAuthService(repositories.Usuario, repositories.UsuarioAdmin, repositories.UsuarioSucursal)
 		services.Usuario = service.NewUsuarioService(repositories.Usuario)
-
+		services.UsuarioAdmin = service.NewUsuarioAdminService(repositories.UsuarioAdmin)
+		services.UsuarioSucursal = service.NewUsuarioSucursalService(repositories.UsuarioSucursal)
 		// Handlers
 		handlers.Auth = handler.NewAuthHandler(services.Auth)
 		handlers.Usuario = handler.NewUsuarioHandler(services.Usuario)
+		handlers.UsuarioSucursal = handler.NewUsuarioSucursalHandler(services.UsuarioSucursal)
 
 		instance = d
 	})

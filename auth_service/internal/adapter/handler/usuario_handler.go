@@ -64,7 +64,7 @@ func (u UsuarioHandler) RegistrarUsuario(c *fiber.Ctx) error {
 		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
 	}
 
-	return c.Status(http.StatusCreated).JSON(util.NewMessageData(domain.UsuarioResponse{Id: *id}, "Usuario creado correctamente"))
+	return c.Status(http.StatusCreated).JSON(util.NewMessageData(domain.UsuarioResponse{Id: *id}, "Usuario regsitrado correctamente"))
 }
 
 func (u UsuarioHandler) ObtenerUsuarioById(c *fiber.Ctx) error {

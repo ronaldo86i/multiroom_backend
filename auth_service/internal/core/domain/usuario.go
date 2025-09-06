@@ -11,7 +11,7 @@ type LoginRequest struct {
 // UsuarioRequest representa los datos necesarios para crear o actualizar un usuario.
 type UsuarioRequest struct {
 	Username string `json:"username"`
-	Password string `json:"password"` // solo si es necesario
+	Password string `json:"password"`
 	Estado   string `json:"estado"`
 }
 
@@ -36,7 +36,8 @@ type UsuarioResponse struct {
 }
 
 // TokenResponse contiene el token JWT devuelto al autenticarse.
-type TokenResponse struct {
+type TokenResponse[T any] struct {
 	Token     string `json:"token"`
 	ExpiresIn int64  `json:"expiresIn,omitempty"` // opcional: si querés mostrar la expiración
+	Data      T      `json:"data"`
 }

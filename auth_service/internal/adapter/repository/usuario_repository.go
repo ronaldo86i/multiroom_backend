@@ -159,11 +159,11 @@ func (u UsuarioRepository) ObtenerUsuarioByUsername(ctx context.Context, usernam
 	query := `SELECT u.id,u.username,u.password_hash,u.estado,u.creado_en FROM usuario u WHERE u.username = $1 LIMIT 1`
 	err := u.pool.QueryRow(ctx, query, *username).Scan(&usuario.Id, &usuario.Username, &usuario.PasswordHash, &usuario.Estado, &usuario.CreadoEn)
 	if err != nil {
+		log.Println("Error al obtener usuario:", err)
 		// Si no hay registros
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, datatype.NewNotFoundError("Usuario no encontrado")
 		}
-		log.Println("Error al escanear el usuario")
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 	return &usuario, nil
