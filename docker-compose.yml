@@ -1,8 +1,8 @@
 services:
   auth:
-    image: multiroom_auth:0.0.3
+    image: multiroom_auth:0.1.0
     ports:
-      - "9101:8080"   # API
+      - "9101:8080"
     volumes:
       - "./.env:/app/.env"
       - "./sql/migrations.sql:/app/sql/migrations.sql"
@@ -11,12 +11,14 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - multiroom-net
+    mem_limit: 256m
+    cpus: "0.50"
 
   dispositivo:
-    image: multiroom_dispositivo:0.0.3
+    image: multiroom_dispositivo:0.1.0
     ports:
       - "9102:8081"
-      - "9103:8082"   # WebSocket
+      - "9103:8082"
     volumes:
       - "./.env:/app/.env"
       - "./sql/migrations.sql:/app/sql/migrations.sql"
@@ -25,10 +27,14 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - multiroom-net
+    mem_limit: 512m
+    cpus: "1.00"
+
   sucursal:
-    image: multiroom_sucursal:0.0.1
+    image: multiroom_sucursal:0.1.0
     ports:
       - "9104:8083"
+      - "9105:8084"
     volumes:
       - "./.env:/app/.env"
       - "./sql/migrations.sql:/app/sql/migrations.sql"
@@ -38,6 +44,9 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - multiroom-net
+    mem_limit: 512m
+    cpus: "1.00"
+
 networks:
   multiroom-net:
     driver: bridge
