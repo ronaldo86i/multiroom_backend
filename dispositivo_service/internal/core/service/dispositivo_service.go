@@ -10,6 +10,14 @@ type DispositivoService struct {
 	dispositivoRepository port.DispositivoRepository
 }
 
+func (d DispositivoService) ActualizarDispositivoEnLinea(ctx context.Context, id *int, enLinea *bool) error {
+	return d.dispositivoRepository.ActualizarDispositivoEnLinea(ctx, id, enLinea)
+}
+
+func (d DispositivoService) EliminarDispositivoById(ctx context.Context, id *int) error {
+	return d.dispositivoRepository.EliminarDispositivoById(ctx, id)
+}
+
 func (d DispositivoService) ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error) {
 	return d.dispositivoRepository.ObtenerDispositivoByDispositivoId(ctx, dispositivoId)
 }

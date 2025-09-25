@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"multiroom/dispositivo-service/internal/core/domain"
 	"multiroom/dispositivo-service/internal/core/domain/datatype"
 	"multiroom/dispositivo-service/internal/core/port"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ClienteRepository struct {

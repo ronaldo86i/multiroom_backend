@@ -2,9 +2,10 @@ package port
 
 import (
 	"context"
+	"multiroom/dispositivo-service/internal/core/domain"
+
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"multiroom/dispositivo-service/internal/core/domain"
 )
 
 type DispositivoRepository interface {
@@ -15,6 +16,8 @@ type DispositivoRepository interface {
 	HabilitarDispositivo(ctx context.Context, id *int) error
 	ObtenerDispositivoById(ctx context.Context, id *int) (*domain.DispositivoInfo, error)
 	ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error)
+	EliminarDispositivoById(ctx context.Context, id *int) error
+	ActualizarDispositivoEnLinea(ctx context.Context, id *int, enLinea *bool) error
 }
 
 type DispositivoService interface {
@@ -25,6 +28,8 @@ type DispositivoService interface {
 	HabilitarDispositivo(ctx context.Context, id *int) error
 	ObtenerDispositivoById(ctx context.Context, id *int) (*domain.DispositivoInfo, error)
 	ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error)
+	EliminarDispositivoById(ctx context.Context, id *int) error
+	ActualizarDispositivoEnLinea(ctx context.Context, id *int, enLinea *bool) error
 }
 
 type DispositivoHandler interface {
@@ -34,6 +39,7 @@ type DispositivoHandler interface {
 	DeshabilitarDispositivo(c *fiber.Ctx) error
 	HabilitarDispositivo(c *fiber.Ctx) error
 	ObtenerDispositivoByDispositivoId(c *fiber.Ctx) error
+	EliminarDispositivoById(c *fiber.Ctx) error
 }
 
 type DispositivoHandlerWS interface {

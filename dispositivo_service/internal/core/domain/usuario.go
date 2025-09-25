@@ -73,10 +73,3 @@ type UsuarioSucursal struct {
 	EliminadoEn  *time.Time `json:"eliminadoEn,omitempty"`
 	Sucursal     Sucursal   `json:"sucursal"`
 }
-
-type Sucursal struct {
-	Id       int       `json:"id"`
-	Nombre   string    `json:"nombre"`
-	Estado   string    `json:"estado,omitempty"`
-	CreadoEn time.Time `json:"creadoEn"`
-}

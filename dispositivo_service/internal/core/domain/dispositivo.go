@@ -15,4 +15,5 @@ type DispositivoInfo struct {
 	Estado        string         `json:"estado"`
 	CreadoEn      time.Time      `json:"creadoEn"`
 	Usuario       *UsuarioSimple `json:"usuario,omitempty"`
+	EnLinea       bool           `json:"enLinea"`
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/dispositivo-service/internal/core/domain"
@@ -63,11 +64,21 @@ func VerifyUser(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(util.NewMessage("Error el usuario"))
 	}
-	// Guardar en contexto y locals
 	ctx := context.WithValue(c.UserContext(), util.ContextUserIdKey, user.Data.Id)
+	// Si es WebSocket, validar cabecera dispositivoId
+	if websocket.IsWebSocketUpgrade(c) {
+		dispositivoId := strings.TrimSpace(c.Get("dispositivoId"))
+		if dispositivoId == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("Header \"dispositivoId\" es obligatorio en WebSocket"))
+		}
+		log.Println("dispositivoId:", dispositivoId)
+		ctx = context.WithValue(ctx, util.ContextDispositivoIdKey, dispositivoId)
+		c.Locals(util.ContextDispositivoIdKey, dispositivoId)
+	}
+	// Guardar en contexto y locals
 	c.SetUserContext(ctx)
-
 	c.Locals(util.ContextUserIdKey, user.Data.Id)
+
 	return c.Next()
 }
 

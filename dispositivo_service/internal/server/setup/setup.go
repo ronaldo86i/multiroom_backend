@@ -1,7 +1,6 @@
 package setup
 
 import (
-	"github.com/joho/godotenv"
 	"log"
 	httpHandler "multiroom/dispositivo-service/internal/adapter/handler/http"
 	wsHandler "multiroom/dispositivo-service/internal/adapter/handler/websocket"
@@ -11,17 +10,21 @@ import (
 	"multiroom/dispositivo-service/internal/postgresql"
 	"os"
 
+	"github.com/joho/godotenv"
+
 	"sync"
 )
 
 type Repository struct {
 	Dispositivo port.DispositivoRepository
 	Cliente     port.ClienteRepository
+	Sala        port.SalaRepository
 }
 
 type Service struct {
 	Dispositivo port.DispositivoService
 	Cliente     port.ClienteService
+	Sala        port.SalaService
 	RabbitMQ    port.RabbitMQService
 }
 
@@ -80,14 +83,18 @@ func Init() {
 		// Repositories
 		repositories.Dispositivo = repository.NewDispositivoRepository(pool)
 		repositories.Cliente = repository.NewClienteRepository(pool)
+		repositories.Sala = repository.NewSalaRepository(pool)
+
 		// Services
 		services.Dispositivo = service.NewDispositivoService(repositories.Dispositivo)
 		services.Cliente = service.NewClienteService(repositories.Cliente)
+		services.Sala = service.NewSalaRepository(repositories.Sala)
 		services.RabbitMQ = service.NewRabbitMQService(os.Getenv("RABBITMQ_URL"))
+
 		// Handlers
 		handlers.Dispositivo = httpHandler.NewDispositivoHandler(services.Dispositivo, services.RabbitMQ)
 		handlers.Cliente = httpHandler.NewClienteHandler(services.Cliente)
-		handlers.DispositivoWS = wsHandler.NewDispositivoHandlerWS(services.Dispositivo, services.RabbitMQ)
+		handlers.DispositivoWS = wsHandler.NewDispositivoHandlerWS(services.Dispositivo, services.Sala, services.RabbitMQ)
 		instance = d
 	})
 }

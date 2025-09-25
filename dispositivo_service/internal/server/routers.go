@@ -41,7 +41,7 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1Dispositivos.Post("", middleware.VerifyUser, s.handlers.Dispositivo.RegistrarDispositivo)
 	v1Dispositivos.Patch("/:dispositivoId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.HabilitarDispositivo)
 	v1Dispositivos.Patch("/:dispositivoId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.DeshabilitarDispositivo)
-
+	v1Dispositivos.Delete("/:dispositivoId/eliminar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.EliminarDispositivoById)
 	// path: /api/v1/usuarios
 	v1Usuarios := v1.Group("/usuarios")
 	v1Usuarios.Get("/:usuarioId/dispositivos", middleware.VerifyUser, s.handlers.Dispositivo.ObtenerListaDispositivosByUsuarioId)

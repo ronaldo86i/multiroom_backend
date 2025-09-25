@@ -4,18 +4,83 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"multiroom/dispositivo-service/internal/core/domain"
 	"multiroom/dispositivo-service/internal/core/domain/datatype"
 	"multiroom/dispositivo-service/internal/core/port"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type DispositivoRepository struct {
 	pool *pgxpool.Pool
+}
+
+func (d DispositivoRepository) ActualizarDispositivoEnLinea(ctx context.Context, id *int, enLinea *bool) error {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		log.Println(err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	committed := false
+	defer func() {
+
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	query := `UPDATE dispositivo d SET en_linea=$1 WHERE id = $2`
+	ct, err := tx.Exec(ctx, query, *enLinea, *id)
+	if err != nil {
+		return datatype.NewInternalServerErrorGeneric()
+	}
+
+	if ct.RowsAffected() == 0 {
+		return datatype.NewNotFoundError("Dispositivo no encontrado")
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	committed = true
+	return nil
+}
+
+func (d DispositivoRepository) EliminarDispositivoById(ctx context.Context, id *int) error {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		log.Println(err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	committed := false
+	defer func() {
+
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	query := `UPDATE dispositivo d SET estado = 'Inactivo', eliminado_en = now() WHERE id = $1`
+	ct, err := tx.Exec(ctx, query, *id)
+	if err != nil {
+		return datatype.NewInternalServerErrorGeneric()
+	}
+
+	if ct.RowsAffected() == 0 {
+		return datatype.NewNotFoundError("Dispositivo no encontrado")
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	committed = true
+	return nil
 }
 
 func (d DispositivoRepository) ObtenerDispositivoByDispositivoId(ctx context.Context, dispositivoId *string) (*domain.DispositivoInfo, error) {
@@ -32,7 +97,7 @@ SELECT
     ) as usuario 
 FROM dispositivo d
     LEFT JOIN public.usuario u on u.id = d.usuario_id
-WHERE d.dispositivo_id = $1
+WHERE d.dispositivo_id = $1 AND d.eliminado_en IS NULL
 LIMIT 1
 `
 	var item domain.DispositivoInfo
@@ -88,7 +153,7 @@ func (d DispositivoRepository) DeshabilitarDispositivo(ctx context.Context, id *
 		}
 	}()
 
-	query := `UPDATE dispositivo d SET estado = 'Inactivo',eliminado_en = now() WHERE id = $1`
+	query := `UPDATE dispositivo d SET estado = 'Inactivo' WHERE id = $1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		return datatype.NewInternalServerErrorGeneric()
@@ -119,7 +184,7 @@ func (d DispositivoRepository) HabilitarDispositivo(ctx context.Context, id *int
 			_ = tx.Rollback(ctx)
 		}
 	}()
-	query := `UPDATE dispositivo d SET estado = 'Activo',eliminado_en = NULL WHERE id = $1`
+	query := `UPDATE dispositivo d SET estado = 'Activo' WHERE id = $1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		return datatype.NewInternalServerErrorGeneric()
@@ -242,6 +307,7 @@ func (d DispositivoRepository) ObtenerListaDispositivos(ctx context.Context, fil
 	var conditions []string
 	var args []interface{}
 	argIndex := 1
+	conditions = append(conditions, "d.eliminado_en IS NULL")
 
 	if dispositivoId != "" {
 		conditions = append(conditions, fmt.Sprintf("d.dispositivo_id = $%d", argIndex))
