@@ -2,11 +2,12 @@ package websocket
 
 import (
 	"fmt"
-	"github.com/gofiber/contrib/websocket"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 	"multiroom/sucursal-service/internal/core/port"
 	"sync"
+
+	"github.com/gofiber/contrib/websocket"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type SalaHandlerWS struct {
@@ -14,6 +15,15 @@ type SalaHandlerWS struct {
 	rabbitMQService port.RabbitMQService
 }
 
+// ---------- CONTROL DE CONSUMIDORES ÚNICOS ----------
+var oncePerQueue sync.Map // map[string]*sync.Once
+
+func getOnceForQueue(queue string) *sync.Once {
+	onceIface, _ := oncePerQueue.LoadOrStore(queue, &sync.Once{})
+	return onceIface.(*sync.Once)
+}
+
+// ---------- USO POR SUCURSAL ----------
 func (s SalaHandlerWS) UsoSalasBySucursalId(c *websocket.Conn) {
 	userId := fmt.Sprintf("%v", c.Locals("userId"))
 	sucursalIdLocal := c.Locals("sucursalId").(int)
@@ -23,45 +33,37 @@ func (s SalaHandlerWS) UsoSalasBySucursalId(c *websocket.Conn) {
 
 	wsUsuariosSucursalManagers.addConnection(sucursalIdStr, c)
 	queueName := fmt.Sprintf("sucursal_%s_salas", sucursalIdStr)
-	log.Println(queueName)
 
-	go func() {
-		log.Printf("📡 Iniciando consumidor para cola '%s'", queueName)
-		err := s.rabbitMQService.StartConsumer(queueName, func(msg amqp.Delivery) {
-			log.Printf("📨 RabbitMQ [%s]: %s", queueName, msg.Body)
-
-			conns, ok := wsUsuariosSucursalManagers.getConnections(sucursalIdStr)
-			if !ok {
-				log.Printf("⚠️ No hay conexiones en sucursal %s. Descartando mensaje.", sucursalIdStr)
-				_ = msg.Nack(false, false)
-				return
-			}
-
-			delivered := false
-			conns.Range(func(key, _ any) bool {
-				conn := key.(*websocket.Conn)
-				err := conn.WriteMessage(websocket.TextMessage, msg.Body)
-				if err != nil {
-					log.Printf("❌ Error WS en sucursal %s: %v", sucursalIdStr, err)
-					wsUsuariosSucursalManagers.removeConnection(sucursalIdStr, conn)
-					_ = conn.Close()
-					return true
+	// Consumidor único por sucursal
+	getOnceForQueue(queueName).Do(func() {
+		go func() {
+			log.Printf("📡 Iniciando consumidor único para cola '%s'", queueName)
+			err := s.rabbitMQService.StartConsumer(queueName, func(msg amqp.Delivery) {
+				conns, ok := wsUsuariosSucursalManagers.getConnections(sucursalIdStr)
+				if !ok {
+					_ = msg.Ack(false)
+					return
 				}
-				delivered = true
-				return true
-			})
 
-			if !delivered {
-				log.Printf("⚠️ Nadie recibió mensaje en sucursal %s", sucursalIdStr)
-				_ = msg.Nack(false, false)
-				return
+				conns.Range(func(key, _ any) bool {
+					conn := key.(*websocket.Conn)
+					if err := conn.WriteMessage(websocket.TextMessage, msg.Body); err != nil {
+						log.Printf("❌ Error WS en sucursal %s: %v", sucursalIdStr, err)
+						wsUsuariosSucursalManagers.removeConnection(sucursalIdStr, conn)
+						_ = conn.Close()
+					}
+					return true
+				})
+				_ = msg.Ack(false)
+			}, amqp.Table{
+				amqp.QueueMaxLenArg:   int32(1),
+				amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
+			})
+			if err != nil {
+				log.Printf("❌ Error iniciando consumidor para %s: %v", queueName, err)
 			}
-			_ = msg.Ack(false)
-		})
-		if err != nil {
-			log.Printf("❌ Error iniciando consumidor para %s: %v", queueName, err)
-		}
-	}()
+		}()
+	})
 
 	defer func() {
 		wsUsuariosSucursalManagers.removeConnection(sucursalIdStr, c)
@@ -79,55 +81,45 @@ func (s SalaHandlerWS) UsoSalasBySucursalId(c *websocket.Conn) {
 	}
 }
 
+// ---------- USO GENERAL ----------
 func (s SalaHandlerWS) UsoSalas(c *websocket.Conn) {
 	userId := fmt.Sprintf("%v", c.Locals("userId"))
 	log.Println("🛰️ Usuario conectado:", userId)
 
 	wsUsuariosManagers.addConnection(userId, c)
 	queueName := "salas"
-	log.Println(queueName)
-	go func() {
-		log.Printf("📡 Iniciando consumidor para cola '%s'", queueName)
-		err := s.rabbitMQService.StartConsumer(queueName, func(msg amqp.Delivery) {
-			log.Printf("📨 RabbitMQ [%s]: %s", queueName, msg.Body)
 
-			val, ok := wsUsuariosManagers.Load(userId)
-			if !ok {
-				log.Printf("⚠️ Conexión no encontrada para usuario %s. Reenviando mensaje.", userId)
-				_ = msg.Nack(false, true)
-				return
-			}
-			conns := val.(*sync.Map)
-			delivered := false
-
-			conns.Range(func(key, _ any) bool {
-				conn := key.(*websocket.Conn)
-				err := conn.WriteMessage(websocket.TextMessage, msg.Body)
-				if err != nil {
-					log.Printf("❌ Error enviando WebSocket al usuario %s: %v", userId, err)
-					wsUsuariosManagers.removeConnection(userId, conn)
-					_ = conn.Close()
-					return true
+	// Consumidor único para "salas"
+	getOnceForQueue(queueName).Do(func() {
+		go func() {
+			log.Printf("📡 Iniciando consumidor único para cola '%s'", queueName)
+			err := s.rabbitMQService.StartConsumer(queueName, func(msg amqp.Delivery) {
+				val, ok := wsUsuariosManagers.Load(userId)
+				if !ok {
+					_ = msg.Nack(false, true)
+					return
 				}
-				delivered = true
-				return true
+				conns := val.(*sync.Map)
+
+				conns.Range(func(key, _ any) bool {
+					conn := key.(*websocket.Conn)
+					if err := conn.WriteMessage(websocket.TextMessage, msg.Body); err != nil {
+						log.Printf("❌ Error enviando WebSocket al usuario %s: %v", userId, err)
+						wsUsuariosManagers.removeConnection(userId, conn)
+						_ = conn.Close()
+					}
+					return true
+				})
+				_ = msg.Ack(false)
+			}, amqp.Table{
+				amqp.QueueMaxLenArg:   int32(1),
+				amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
 			})
-
-			if !delivered {
-				log.Printf("⚠️ No se entregó mensaje a ninguna conexión para %s", userId)
-				_ = msg.Nack(false, true)
-				return
+			if err != nil {
+				log.Printf("❌ Error iniciando consumidor para %s: %v", queueName, err)
 			}
-
-			if err := msg.Ack(false); err != nil {
-				log.Printf("⚠️ No se pudo ACK el mensaje: %v", err)
-			}
-		})
-
-		if err != nil {
-			log.Printf("❌ Error iniciando consumidor para %s: %v", queueName, err)
-		}
-	}()
+		}()
+	})
 
 	defer func() {
 		wsUsuariosManagers.removeConnection(userId, c)
@@ -145,56 +137,49 @@ func (s SalaHandlerWS) UsoSalas(c *websocket.Conn) {
 	}
 }
 
+// ---------- USO POR SALA ----------
 func (s SalaHandlerWS) UsoSala(c *websocket.Conn) {
 	userId := fmt.Sprintf("%v", c.Locals("userId"))
 	salaId := c.Params("salaId")
 	log.Println("🛰️ Usuario conectado:", userId, "a sala:", salaId)
 
-	wsUsuariosManagers.addConnection(salaId, c) // clave = salaId
+	wsUsuariosBySalaManagers.addConnection(salaId, c)
 	queueName := "salas_" + salaId
-	log.Println(queueName)
 
-	go func() {
-		log.Printf("📡 Iniciando consumidor para cola '%s'", queueName)
-		err := s.rabbitMQService.StartConsumer(queueName, func(msg amqp.Delivery) {
-			log.Printf("📨 RabbitMQ [%s]: %s", queueName, msg.Body)
-
-			val, ok := wsUsuariosManagers.Load(salaId) // buscar por salaId
-			if !ok {
-				log.Printf("⚠️ No hay conexiones en sala %s", salaId)
-				_ = msg.Nack(false, false)
-				return
-			}
-
-			conns := val.(*sync.Map)
-			delivered := false
-			conns.Range(func(key, _ any) bool {
-				conn := key.(*websocket.Conn)
-				err := conn.WriteMessage(websocket.TextMessage, msg.Body)
-				if err != nil {
-					log.Printf("❌ Error WS en sala %s: %v", salaId, err)
-					wsUsuariosManagers.removeConnection(salaId, conn)
-					_ = conn.Close()
-					return true
+	// Consumidor único por sala
+	getOnceForQueue(queueName).Do(func() {
+		go func() {
+			log.Printf("📡 Iniciando consumidor único para cola '%s'", queueName)
+			err := s.rabbitMQService.StartConsumer(queueName, func(msg amqp.Delivery) {
+				val, ok := wsUsuariosBySalaManagers.Load(salaId)
+				if !ok {
+					_ = msg.Ack(false)
+					return
 				}
-				delivered = true
-				return true
-			})
 
-			if !delivered {
-				log.Printf("⚠️ Nadie recibió mensaje en sala %s", salaId)
-				_ = msg.Nack(false, false)
-				return
+				conns := val.(*sync.Map)
+				conns.Range(func(key, _ any) bool {
+					conn := key.(*websocket.Conn)
+					if err := conn.WriteMessage(websocket.TextMessage, msg.Body); err != nil {
+						log.Printf("❌ Error WS en sala %s: %v", salaId, err)
+						wsUsuariosBySalaManagers.removeConnection(salaId, conn)
+						_ = conn.Close()
+					}
+					return true
+				})
+				_ = msg.Ack(false)
+			}, amqp.Table{
+				amqp.QueueMaxLenArg:   int32(1),
+				amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
+			})
+			if err != nil {
+				log.Printf("❌ Error iniciando consumidor para %s: %v", queueName, err)
 			}
-			_ = msg.Ack(false)
-		})
-		if err != nil {
-			log.Printf("❌ Error iniciando consumidor para %s: %v", queueName, err)
-		}
-	}()
+		}()
+	})
 
 	defer func() {
-		wsUsuariosManagers.removeConnection(salaId, c) // clave = salaId
+		wsUsuariosBySalaManagers.removeConnection(salaId, c)
 		_ = c.Close()
 		log.Println("❌ Cliente desconectado:", userId, "de sala:", salaId)
 	}()
@@ -209,6 +194,7 @@ func (s SalaHandlerWS) UsoSala(c *websocket.Conn) {
 	}
 }
 
+// ---------- CONSTRUCTOR ----------
 func NewSalaHandlerWS(salaService port.SalaService, rabbitMQService port.RabbitMQService) *SalaHandlerWS {
 	return &SalaHandlerWS{salaService: salaService, rabbitMQService: rabbitMQService}
 }

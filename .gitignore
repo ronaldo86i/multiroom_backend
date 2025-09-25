@@ -3,3 +3,4 @@ public
 *.tar
 .env
 .idea
+*.zip

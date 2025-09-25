@@ -2,13 +2,14 @@ package http
 
 import (
 	"errors"
-	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/util"
 	"net/http"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type SucursalHandler struct {

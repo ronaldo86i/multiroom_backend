@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gofiber/fiber/v2"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
@@ -15,6 +16,32 @@ import (
 type SalaHandler struct {
 	salaService     port.SalaService
 	rabbitMQService port.RabbitMQService
+}
+
+func (s SalaHandler) ObtenerListaUsoSalas(c *fiber.Ctx) error {
+	salas, err := s.salaService.ObtenerListaUsoSalas(c.UserContext(), c.Queries())
+	if err != nil {
+		return handleError(err)
+	}
+	return c.JSON(salas)
+}
+
+func (s SalaHandler) EliminarSalaById(c *fiber.Ctx) error {
+	salaId, _ := c.ParamsInt("salaId", 0)
+	if err := s.salaService.HabilitarSala(c.UserContext(), &salaId); err != nil {
+		return handleError(err)
+	}
+
+	err := s.salaService.EliminarSalaById(c.UserContext(), &salaId)
+	if err != nil {
+		return handleError(err)
+	}
+	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
+	if err != nil {
+		return handleError(err)
+	}
+	publishSalaAsync(s.rabbitMQService, *sala, salaId)
+	return c.JSON(util.NewMessage("Sala eliminada correctamente"))
 }
 
 // --- Helper para manejar errores ---
@@ -29,16 +56,44 @@ func handleError(err error) error {
 // --- Helper para publicar en RabbitMQ async ---
 func publishSalaAsync(rabbitMQ port.RabbitMQService, sala domain.SalaDetail, salaId int) {
 	go func(s domain.SalaDetail, id int) {
-		if err := rabbitMQ.Publish(fmt.Sprintf("salas_%d", salaId), s); err != nil {
+
+		if err := rabbitMQ.Publish(fmt.Sprintf("salas_%d", salaId), s, amqp.Table{
+			// Máximo de mensajes
+			amqp.QueueMaxLenArg: int32(1),
+
+			// Política de descarte ("drop-head" elimina el más antiguo, "reject-publish" rechaza mensajes nuevos)
+			amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
+		}); err != nil {
 			log.Print("Error al publicar sala_"+fmt.Sprint(id)+":", err)
 		}
-		if err := rabbitMQ.Publish("salas", s); err != nil {
+
+		if err := rabbitMQ.Publish("salas", s, amqp.Table{
+			// Máximo de mensajes
+			amqp.QueueMaxLenArg: int32(1),
+
+			// Política de descarte ("drop-head" elimina el más antiguo, "reject-publish" rechaza mensajes nuevos)
+			amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
+		}); err != nil {
 			log.Print("Error al publicar canal general salas:", err)
 		}
-		if err := rabbitMQ.Publish(fmt.Sprintf("dispositivo_usuario_%d", s.Dispositivo.Usuario.Id), s); err != nil {
-			log.Print("Error al publicar en ", fmt.Sprintf("dispositivo_usuario_%d", s.Dispositivo.Usuario.Id), ":", err)
+
+		if err := rabbitMQ.Publish(fmt.Sprintf("dispositivo_%d_usuario_%d", s.Dispositivo.Id, s.Dispositivo.Usuario.Id), s, amqp.Table{
+			// Máximo de mensajes
+			amqp.QueueMaxLenArg: int32(1),
+
+			// Política de descarte ("drop-head" elimina el más antiguo, "reject-publish" rechaza mensajes nuevos)
+			amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
+		}); err != nil {
+			log.Print("Error al publicar en ", fmt.Sprintf("dispositivo_%d_usuario_%d", s.Dispositivo.Id, s.Dispositivo.Usuario.Id), ":", err)
 		}
-		if err := rabbitMQ.Publish(fmt.Sprintf("sucursal_%d_salas", s.Sucursal.Id), s); err != nil {
+
+		if err := rabbitMQ.Publish(fmt.Sprintf("sucursal_%d_salas", s.Sucursal.Id), s, amqp.Table{
+			// Máximo de mensajes
+			amqp.QueueMaxLenArg: int32(1),
+
+			// Política de descarte ("drop-head" elimina el más antiguo, "reject-publish" rechaza mensajes nuevos)
+			amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
+		}); err != nil {
 			log.Print("Error al publicar en ", fmt.Sprintf("sucursal_%d_salas", s.Sucursal.Id), ":", err)
 		}
 	}(sala, salaId)

@@ -2,10 +2,8 @@ package service
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"multiroom/sucursal-service/internal/core/port"
-
 	"sync"
 	"time"
 
@@ -15,19 +13,25 @@ import (
 type consumerEntry struct {
 	queueName string
 	handler   func(msg amqp.Delivery)
+	args      amqp.Table
 }
 
 type RabbitMQService struct {
-	conn      *amqp.Connection
-	url       string
-	mutex     sync.Mutex
-	connected bool
-	consumers []consumerEntry
+	conn              *amqp.Connection
+	publishCh         *amqp.Channel
+	url               string
+	mutex             sync.Mutex
+	connected         bool
+	consumers         []consumerEntry
+	declaredQueues    map[string]bool
+	declaredExchanges map[string]bool
 }
 
 func NewRabbitMQService(url string) *RabbitMQService {
 	s := &RabbitMQService{
-		url: url,
+		url:               url,
+		declaredQueues:    make(map[string]bool),
+		declaredExchanges: make(map[string]bool),
 	}
 	go s.reconnectLoop()
 	return s
@@ -44,10 +48,20 @@ func (r *RabbitMQService) reconnectLoop() {
 				continue
 			}
 
+			ch, err := conn.Channel()
+			if err != nil {
+				log.Printf("❌ Error creando canal de publicación: %v", err)
+				_ = conn.Close()
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
 			r.mutex.Lock()
 			r.conn = conn
+			r.publishCh = ch
 			r.connected = true
 			r.mutex.Unlock()
+
 			log.Println("✅ Conectado a RabbitMQ")
 
 			// Escuchar cierres inesperados
@@ -56,7 +70,13 @@ func (r *RabbitMQService) reconnectLoop() {
 				log.Printf("⚠️ Conexión cerrada: %v", err)
 				r.mutex.Lock()
 				r.connected = false
+				if r.publishCh != nil {
+					_ = r.publishCh.Close()
+					r.publishCh = nil
+				}
 				r.conn = nil
+				r.declaredQueues = make(map[string]bool)
+				r.declaredExchanges = make(map[string]bool)
 				r.mutex.Unlock()
 			}()
 
@@ -68,7 +88,7 @@ func (r *RabbitMQService) reconnectLoop() {
 
 			for _, entry := range consumers {
 				go func(e consumerEntry) {
-					err := r.StartConsumer(e.queueName, e.handler)
+					err := r.StartConsumer(e.queueName, e.handler, e.args)
 					if err != nil {
 						log.Printf("❌ Error reiniciando consumidor %s: %v", e.queueName, err)
 					}
@@ -90,36 +110,41 @@ func (r *RabbitMQService) GetChannel() (*amqp.Channel, error) {
 }
 
 func (r *RabbitMQService) PublishToExchange(exchange string, body interface{}) error {
-	channel, err := r.GetChannel()
-	if err != nil {
-		log.Printf("❌ No se pudo obtener canal para publicar: %v", err)
-		return err
-	}
-	defer func() {
-		_ = channel.Close()
-	}()
+	r.mutex.Lock()
+	ch := r.publishCh
+	declared := r.declaredExchanges[exchange]
+	r.mutex.Unlock()
 
-	err = channel.ExchangeDeclare(
-		exchange,
-		"fanout",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Printf("❌ Error declarando exchange: %v", err)
-		return err
+	if ch == nil {
+		return amqp.ErrClosed
+	}
+
+	if !declared {
+		err := ch.ExchangeDeclare(
+			exchange,
+			"fanout",
+			false, // durable
+			false, // autoDelete
+			false, // internal
+			false, // noWait
+			nil,
+		)
+		if err != nil {
+			log.Printf("Error declarando exchange %s: %v", exchange, err)
+			return err
+		}
+		r.mutex.Lock()
+		r.declaredExchanges[exchange] = true
+		r.mutex.Unlock()
 	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		log.Printf("❌ Error convirtiendo body a JSON: %v", err)
+		log.Printf("Error convirtiendo body a JSON: %v", err)
 		return err
 	}
 
-	err = channel.Publish(
+	err = ch.Publish(
 		exchange,
 		"", // routing key vacío para fanout
 		false,
@@ -131,48 +156,52 @@ func (r *RabbitMQService) PublishToExchange(exchange string, body interface{}) e
 		},
 	)
 	if err != nil {
-		log.Printf("❌ Error publicando mensaje en RabbitMQ: %v", err)
+		log.Printf("Error publicando en exchange %s: %v", exchange, err)
 		return err
 	}
-	log.Printf("✅ Mensaje publicado en exchange %s", exchange)
+
 	return nil
 }
 
-func (r *RabbitMQService) Publish(queueName string, body interface{}) error {
-	channel, err := r.GetChannel()
+func (r *RabbitMQService) Publish(queueName string, body interface{}, args amqp.Table) error {
+	r.mutex.Lock()
+	conn := r.conn
+	connected := r.connected
+	r.mutex.Unlock()
+
+	if !connected || conn == nil {
+		return amqp.ErrClosed
+	}
+
+	ch, err := conn.Channel()
 	if err != nil {
-		log.Printf("❌ No se pudo obtener canal para publicar: %v", err)
 		return err
 	}
-	defer func() { _ = channel.Close() }()
+	defer func() {
+		_ = ch.Close()
 
-	_, err = channel.QueueDeclare(queueName,
+	}()
+
+	// Declarar cola si no existe
+	_, err = ch.QueueDeclare(
+		queueName,
+		false,
 		true,
 		false,
 		false,
-		false,
-		amqp.Table{
-			// Máximo de mensajes
-			amqp.QueueMaxLenArg: int32(10),
-
-			// Máximo en bytes (ejemplo: 2 MB)
-			amqp.QueueMaxLenBytesArg: int32(2 * 1024 * 1024),
-
-			// Política de descarte ("drop-head" elimina el más antiguo, "reject-publish" rechaza mensajes nuevos)
-			amqp.QueueOverflowArg: amqp.QueueOverflowDropHead,
-		})
+		args,
+	)
 	if err != nil {
-		log.Printf("❌ Error declarando cola para publicar: %v", err)
+		log.Printf("Error declarando cola %s: %v", queueName, err)
 		return err
 	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		log.Printf("❌ Error convirtiendo body a JSON: %v", err)
 		return err
 	}
 
-	err = channel.Publish(
+	err = ch.Publish(
 		"",
 		queueName,
 		false,
@@ -180,40 +209,90 @@ func (r *RabbitMQService) Publish(queueName string, body interface{}) error {
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         jsonBody,
-			DeliveryMode: amqp.Persistent,
+			DeliveryMode: amqp.Transient,
 		},
 	)
 	if err != nil {
-		log.Printf("❌ Error publicando mensaje en RabbitMQ: %v", err)
+		log.Printf("Error publicando mensaje en cola %s: %v", queueName, err)
 		return err
 	}
 
-	log.Printf("✅ Mensaje publicado en cola %s", queueName)
 	return nil
 }
 
-func (r *RabbitMQService) StartConsumer(queueName string, handler func(amqp.Delivery)) error {
-	channel, err := r.conn.Channel()
-	if err != nil {
-		return fmt.Errorf("error creando canal: %w", err)
-	}
-
-	_, err = channel.QueueDeclare(queueName, true, false, false, false, nil)
-	if err != nil {
-		return fmt.Errorf("error declarando cola: %w", err)
-	}
-
-	msgs, err := channel.Consume(queueName, "", false, false, false, false, nil) // autoAck: false
-	if err != nil {
-		return fmt.Errorf("error creando consumidor: %w", err)
-	}
-
+func (r *RabbitMQService) StartConsumer(queueName string, handler func(amqp.Delivery), args amqp.Table) error {
 	go func() {
-		for msg := range msgs {
-			handler(msg)
+		r.mutex.Lock()
+		alreadyRegistered := false
+		for _, c := range r.consumers {
+			if c.queueName == queueName {
+				alreadyRegistered = true
+				break
+			}
+		}
+		if !alreadyRegistered {
+			r.consumers = append(r.consumers, consumerEntry{
+				queueName: queueName,
+				handler:   handler,
+				args:      args,
+			})
+		}
+		r.mutex.Unlock()
+
+		for {
+			r.mutex.Lock()
+			conn := r.conn
+			connected := r.connected
+			r.mutex.Unlock()
+
+			if !connected || conn == nil {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			channel, err := conn.Channel()
+			if err != nil {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			q, err := channel.QueueDeclare(
+				queueName,
+				false,
+				true, // autoDelete
+				false,
+				false,
+				args,
+			)
+			if err != nil {
+				_ = channel.Close()
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			msgs, err := channel.Consume(
+				q.Name,
+				"",
+				false,
+				false,
+				false,
+				false,
+				nil,
+			)
+			if err != nil {
+				_ = channel.Close()
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			for msg := range msgs {
+				handler(msg)
+			}
+
+			_ = channel.Close()
+			time.Sleep(2 * time.Second)
 		}
 	}()
-
 	return nil
 }
 

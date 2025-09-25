@@ -2,9 +2,10 @@ package port
 
 import (
 	"context"
+	"multiroom/sucursal-service/internal/core/domain"
+
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"multiroom/sucursal-service/internal/core/domain"
 )
 
 type SalaRepository interface {
@@ -14,6 +15,7 @@ type SalaRepository interface {
 	ObtenerListaSalas(ctx context.Context, filtros map[string]string) (*[]domain.SalaInfo, error)
 	HabilitarSala(ctx context.Context, id *int) error
 	DeshabilitarSala(ctx context.Context, id *int) error
+	EliminarSalaById(ctx context.Context, id *int) error
 	IncrementarTiempoUsoSala(ctx context.Context, salaId *int, request *domain.UsoSalaRequest) error
 	CancelarSala(ctx context.Context, salaId *int) error
 	AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) error
@@ -21,6 +23,7 @@ type SalaRepository interface {
 	ReanudarTiempoUsoSala(ctx context.Context, salaId *int) error
 	ActualizarUsoSalas(ctx context.Context) (*[]int, error)
 	ObtenerListaSalasDetailByIds(ctx context.Context, ids []int) (*[]domain.SalaDetail, error)
+	ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error)
 }
 
 type SalaService interface {
@@ -30,6 +33,7 @@ type SalaService interface {
 	ObtenerListaSalas(ctx context.Context, filtros map[string]string) (*[]domain.SalaInfo, error)
 	HabilitarSala(ctx context.Context, id *int) error
 	DeshabilitarSala(ctx context.Context, id *int) error
+	EliminarSalaById(ctx context.Context, id *int) error
 	IncrementarTiempoUsoSala(ctx context.Context, salaId *int, request *domain.UsoSalaRequest) error
 	CancelarSala(ctx context.Context, salaId *int) error
 	AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) error
@@ -37,6 +41,7 @@ type SalaService interface {
 	ReanudarTiempoUsoSala(ctx context.Context, salaId *int) error
 	ActualizarUsoSalas(ctx context.Context) (*[]int, error)
 	ObtenerListaSalasDetailByIds(ctx context.Context, ids []int) (*[]domain.SalaDetail, error)
+	ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error)
 }
 
 type SalaHandler interface {
@@ -46,11 +51,13 @@ type SalaHandler interface {
 	ObtenerListaSalas(c *fiber.Ctx) error
 	HabilitarSala(c *fiber.Ctx) error
 	DeshabilitarSala(c *fiber.Ctx) error
+	EliminarSalaById(c *fiber.Ctx) error
 	IncrementarTiempoUsoSala(c *fiber.Ctx) error
 	CancelarSala(c *fiber.Ctx) error
 	AsignarTiempoUsoSala(c *fiber.Ctx) error
 	PausarTiempoUsoSala(c *fiber.Ctx) error
 	ReanudarTiempoUsoSala(c *fiber.Ctx) error
+	ObtenerListaUsoSalas(c *fiber.Ctx) error
 }
 
 type SalaHandlerWS interface {

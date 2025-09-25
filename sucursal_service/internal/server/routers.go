@@ -1,12 +1,13 @@
 package server
 
 import (
-	"github.com/gofiber/contrib/websocket"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"multiroom/sucursal-service/internal/core/util"
 	"multiroom/sucursal-service/internal/server/middleware"
 	"time"
+
+	"github.com/gofiber/contrib/websocket"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
 
 func rateLimiter(max int, expiration, delay time.Duration) fiber.Handler {
@@ -57,12 +58,14 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1Salas := v1.Group("/salas")
 	v1Salas.Use(middleware.HostnameMiddleware)
 	v1Salas.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ObtenerListaSalas)
+	v1Salas.Get("/uso", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ObtenerListaUsoSalas)
 	v1Salas.Get("/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ObtenerSalaById)
 	v1Salas.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.RegistrarSala)
 	v1Salas.Put("/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ModificarSala)
 	v1Salas.Patch("/:salaId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.HabilitarSala)
 	v1Salas.Patch("/:salaId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.DeshabilitarSala)
-
+	v1Salas.Delete("/:salaId/eliminar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.EliminarSalaById)
+	// path: /api/v1/acciones/salas
 	v1AccionesSalas := v1.Group("/acciones/salas")
 	v1AccionesSalas.Use(middleware.HostnameMiddleware)
 	v1AccionesSalas.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.AsignarTiempoUsoSala)
@@ -70,6 +73,15 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1AccionesSalas.Patch("/pausar/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.PausarTiempoUsoSala)
 	v1AccionesSalas.Patch("/reanudar/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ReanudarTiempoUsoSala)
 	v1AccionesSalas.Patch("/incrementar/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.IncrementarTiempoUsoSala)
+
+	// path: /api/v1/app-version
+	v1AppVersion := v1.Group("/app-version")
+	v1AccionesSalas.Use(middleware.HostnameMiddleware)
+	v1AppVersion.Get("/ultimo", s.handlers.AppVersion.ObtenerUltimaVersion)
+	v1AppVersion.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.AppVersion.ObtenerListaVersiones)
+	v1AppVersion.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.AppVersion.RegistrarApp)
+	v1AppVersion.Get("/:appVersionId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.AppVersion.ObtenerVersion)
+	v1AppVersion.Put("/:appVersionId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.AppVersion.ModificarVersion)
 }
 
 func (s *Server) endPointsApiUsuarioSucursal(api fiber.Router) {

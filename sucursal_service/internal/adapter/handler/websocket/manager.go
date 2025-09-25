@@ -12,6 +12,7 @@ type SyncMap struct {
 var (
 	wsUsuariosManagers         = &SyncMap{}
 	wsUsuariosSucursalManagers = &SyncMap{}
+	wsUsuariosBySalaManagers   = &SyncMap{}
 )
 
 // Añadir conexión

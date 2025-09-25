@@ -1,11 +1,9 @@
 package util
 
 import (
-	"errors"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 
 	"fmt"
-	"github.com/gofiber/fiber/v2"
 	"io"
 	"log"
 	"mime/multipart"
@@ -15,6 +13,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // file es una estructura que proporciona métodos para manejar operaciones de archivo.
@@ -96,75 +96,6 @@ func (file) DeleteAllFilesWithException(dir, fileName string) error {
 
 	return nil
 }
-
-// PrepareAndSaveImages maneja la creación del directorio, eliminación de imágenes existentes
-// y guarda las nuevas imágenes concurrentemente.
-//func (file) PrepareAndSaveImages(route string, filesHeader *[]*multipart.FileHeader) error {
-//	// Crear el directorio si no existe
-//	if err := File.MakeDir(route); err != nil {
-//		return fmt.Errorf("error al crear el directorio")
-//	}
-//
-//	// Borrar las imágenes existentes
-//	if err := File.DeleteAllFiles(route); err != nil {
-//		return fmt.Errorf("error al eliminar las imágenes anteriores")
-//	}
-//
-//	// Guardar las imágenes concurrentemente
-//	var wg sync.WaitGroup
-//	var mu sync.Mutex
-//	var saveErr error
-//
-//	id := uuid.New()
-//	for i, file := range *filesHeader {
-//		wg.Add(1)
-//		go func(i int, file *multipart.FileHeader) {
-//			defer wg.Done()
-//			// Guardar cada imagen usando saveImage y registrar el error si ocurre
-//			if err := saveImage(file, route, i, id.String()); err != nil {
-//				mu.Lock()
-//				saveErr = err
-//				mu.Unlock()
-//			}
-//		}(i, file)
-//	}
-//
-//	wg.Wait() // Esperar a que todas las goroutines terminen
-//
-//	// Retornar cualquier error de guardado
-//	return saveErr
-//}
-
-// saveImage guarda un archivo de imagen en la ruta especificada.
-//func saveImage(file *multipart.FileHeader, route string, index int, name string) error {
-//	f, err := file.Open()
-//	if err != nil {
-//		log.Println("Error al abrir el archivo:", err)
-//		return datatype.ErrorResponse{
-//			Code:    fiber.StatusInternalServerError,
-//			Message: "Error al guardar el archivo",
-//		}
-//	}
-//	defer func(f multipart.File) {
-//		err := f.Close()
-//		if err != nil {
-//			// Manejar error al cerrar el archivo (se puede registrar o manejar según necesidad)
-//		}
-//	}(f)
-//
-//	// Crear un nombre de archivo único
-//	nameFile := fmt.Sprintf("%03d_%s%s", index+1, name, filepath.Ext(file.Filename))
-//
-//	// Guardar el archivo en la ruta
-//	if _, err := File.SaveFileImg(route, nameFile, f); err != nil {
-//		log.Println("Error al guardar el archivo:", err)
-//		return datatype.ErrorResponse{
-//			Code:    fiber.StatusInternalServerError,
-//			Message: "Error al guardar el archivo",
-//		}
-//	}
-//	return nil
-//}
 
 func (file) Copy(src, dst string) error {
 	// Obtener el directorio de destino
@@ -436,32 +367,6 @@ func EnviarArchivo(ctx *fiber.Ctx) error {
 	return EnviarArchivoPorRango(ctx, file, fileInfo.Size(), contentType, rangeHeader)
 }
 
-// ErrorHandler centralizado para manejar todos los errores en la aplicación.
-func ErrorHandler(ctx *fiber.Ctx, err error) error {
-	// Código de estado por defecto
-	code := fiber.StatusInternalServerError
-	var e *fiber.Error
-
-	// Verificar si el error es de tipo *fiber.Error
-	if errors.As(err, &e) {
-		code = e.Code // Obtener el código de error específico
-	} else {
-		e = &fiber.Error{
-			Code:    code,
-			Message: "Internal Server Error",
-		}
-	}
-
-	// Manejo personalizado para errores 404
-	if e.Code == fiber.StatusNotFound && strings.HasPrefix(ctx.Path(), "/uploads/") {
-		// Renderizar un archivo para 404
-		return ctx.Status(fiber.StatusNotFound).SendFile("./public/404.png")
-	}
-
-	// Respuesta estándar para otros errores
-	return ctx.Status(code).SendString(e.Message)
-}
-
 // BackupFiles crea una copia en memoria de los archivos de un directorio
 func (file) BackupFiles(dir string) (map[string][]byte, error) {
 	backup := make(map[string][]byte)
@@ -487,6 +392,14 @@ func (file) BackupFiles(dir string) (map[string][]byte, error) {
 	}
 
 	return backup, nil
+}
+
+func (file) BackupFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 // RestoreFiles borra archivos actuales y restaura desde un backup

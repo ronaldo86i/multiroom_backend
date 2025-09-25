@@ -10,6 +10,14 @@ type SalaService struct {
 	salaRepository port.SalaRepository
 }
 
+func (s SalaService) ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error) {
+	return s.salaRepository.ObtenerListaUsoSalas(ctx, filtros)
+}
+
+func (s SalaService) EliminarSalaById(ctx context.Context, id *int) error {
+	return s.salaRepository.EliminarSalaById(ctx, id)
+}
+
 func (s SalaService) ActualizarUsoSalas(ctx context.Context) (*[]int, error) {
 	return s.salaRepository.ActualizarUsoSalas(ctx)
 }

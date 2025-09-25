@@ -16,23 +16,26 @@ import (
 )
 
 type Repository struct {
-	Pais     port.PaisRepository
-	Sucursal port.SucursalRepository
-	Sala     port.SalaRepository
+	Pais       port.PaisRepository
+	Sucursal   port.SucursalRepository
+	Sala       port.SalaRepository
+	AppVersion port.AppVersionRepository
 }
 
 type Service struct {
-	Pais     port.PaisService
-	Sucursal port.SucursalService
-	Sala     port.SalaService
-	RabbitMQ port.RabbitMQService
+	Pais       port.PaisService
+	Sucursal   port.SucursalService
+	Sala       port.SalaService
+	RabbitMQ   port.RabbitMQService
+	AppVersion port.AppVersionService
 }
 
 type Handler struct {
-	Pais     port.PaisHandler
-	Sucursal port.SucursalHandler
-	Sala     port.SalaHandler
-	SalaWS   port.SalaHandlerWS
+	Pais       port.PaisHandler
+	Sucursal   port.SucursalHandler
+	Sala       port.SalaHandler
+	SalaWS     port.SalaHandlerWS
+	AppVersion port.AppVersionHandler
 }
 
 type Dependencies struct {
@@ -85,16 +88,19 @@ func Init() {
 		repositories.Pais = repository.NewPaisRepository(pool)
 		repositories.Sucursal = repository.NewSucursalRepository(pool)
 		repositories.Sala = repository.NewSalaRepository(pool)
+		repositories.AppVersion = repository.NewAppVersionRepository(pool)
 		// Services
 		services.RabbitMQ = service.NewRabbitMQService(os.Getenv("RABBITMQ_URL"))
 		services.Pais = service.NewPaisService(repositories.Pais)
 		services.Sucursal = service.NewSucursalService(repositories.Sucursal)
 		services.Sala = service.NewSalaService(repositories.Sala)
+		services.AppVersion = service.NewAppVersionService(repositories.AppVersion)
 		// Handlers
 		handlers.Pais = httpHandler.NewPaisHandler(services.Pais)
 		handlers.Sucursal = httpHandler.NewSucursalHandler(services.Sucursal)
 		handlers.SalaWS = wsHandler.NewSalaHandlerWS(services.Sala, services.RabbitMQ)
 		handlers.Sala = httpHandler.NewSalaHandler(services.Sala, services.RabbitMQ)
+		handlers.AppVersion = httpHandler.NewAppVersionHandler(services.AppVersion)
 
 		instance = d
 	})

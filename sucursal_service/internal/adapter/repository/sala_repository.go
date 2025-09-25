@@ -5,19 +5,169 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lib/pq"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lib/pq"
 )
 
 type SalaRepository struct {
 	pool *pgxpool.Pool
+}
+
+func (s SalaRepository) ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error) {
+	var filters []string
+	var args []interface{}
+	i := 1
+	if fechaInicioStr := filtros["fechaInicio"]; fechaInicioStr != "" {
+		// Parsear fecha + hora + offset
+		fechaInicio, err := time.Parse(time.RFC3339, fechaInicioStr)
+		if err != nil {
+			log.Println("Error al convertir fechaInicio a time.Time:", err)
+			return nil, datatype.NewBadRequestError("El valor de fechaInicio no es válido, formato esperado: YYYY-MM-DD HH:MM:SS ±HHMM")
+		}
+
+		filters = append(filters, fmt.Sprintf("us.inicio >= $%d", i))
+		args = append(args, fechaInicio.UTC())
+		i++
+	}
+
+	if fechaFinStr := filtros["fechaFin"]; fechaFinStr != "" {
+		// Parsear fecha + hora + offset
+		fechaFin, err := time.Parse(time.RFC3339, fechaFinStr)
+		if err != nil {
+			log.Println("Error al convertir fechaInicio a time.Time:", err)
+			return nil, datatype.NewBadRequestError("El valor de fechaInicio no es válido, formato esperado: YYYY-MM-DD HH:MM:SS ±HHMM")
+		}
+
+		filters = append(filters, fmt.Sprintf("us.fin <= $%d", i))
+		args = append(args, fechaFin.UTC())
+		i++
+	}
+
+	if clienteIdStr := filtros["clienteId"]; clienteIdStr != "" {
+		clienteId, err := strconv.Atoi(clienteIdStr)
+		if err != nil {
+			log.Println("Error al convertir clienteId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de clienteId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("c.cliente_id = $%d", i))
+		args = append(args, clienteId)
+		i++
+	}
+
+	if salaIdStr := filtros["salaId"]; salaIdStr != "" {
+		salaId, err := strconv.Atoi(salaIdStr)
+		if err != nil {
+			log.Println("Error al convertir salaId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de salaId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("s.id = $%d", i))
+		args = append(args, salaId)
+		i++
+	}
+
+	if sucursalIdStr := filtros["sucursalId"]; sucursalIdStr != "" {
+		sucursalId, err := strconv.Atoi(sucursalIdStr)
+		if err != nil {
+			log.Println("Error al convertir sucursalId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de sucursalId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("s2.id = $%d", i))
+		args = append(args, sucursalId)
+		i++
+	}
+
+	query := `
+SELECT
+	CASE WHEN c.id IS NOT NULL THEN jsonb_build_object(
+		'id', c.id,
+		'nombres', c.nombres,
+		'apellidos', c.apellidos,
+		'codigoPais', c.codigo_pais,
+		'celular', c.celular,
+		'fechaNacimiento', c.fecha_nacimiento,
+		'estado', c.estado,
+		'creadoEn', c.creado_en
+) ELSE '{}'::jsonb END AS cliente, 
+    us.inicio,
+    us.fin,
+    us.pausado_en,
+    EXTRACT(EPOCH FROM COALESCE(us.duracion_pausa, '0')) AS duracion_pausa,
+    EXTRACT(EPOCH FROM (COALESCE(us.fin, NOW()) - us.inicio - COALESCE(us.duracion_pausa, '0'))) AS tiempo_uso,
+    us.estado
+FROM uso_sala us
+LEFT JOIN public.cliente c on c.id = us.cliente_id
+LEFT JOIN public.sala s on us.sala_id = s.id
+LEFT JOIN public.sucursal s2 on s2.id = s.sucursal_id
+`
+
+	if len(filters) > 0 {
+		query += " WHERE " + strings.Join(filters, " AND ")
+	}
+	query += " ORDER BY us.inicio ASC"
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		log.Println("Error al ejecutar la consulta:", err)
+		return nil, datatype.NewInternalServerErrorGeneric()
+	}
+	defer rows.Close()
+	list := make([]domain.UsoSala, 0)
+	for rows.Next() {
+		var item domain.UsoSala
+		err = rows.Scan(&item.Cliente, &item.Inicio, &item.Fin, &item.PausadoEn, &item.DuracionPausa, &item.TiempoUso, &item.Estado)
+		if err != nil {
+			log.Println("Error al escanear uso_sala:", err)
+			return nil, datatype.NewInternalServerErrorGeneric()
+		}
+		list = append(list, item)
+	}
+
+	return &list, nil
+}
+
+func (s SalaRepository) EliminarSalaById(ctx context.Context, id *int) error {
+	// Iniciar transacción
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		log.Println("Error al iniciar transacción:", err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+
+	var committed bool
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	query := `UPDATE sala SET estado='Inactivo',actualizado_en=now(),eliminado_en=now() WHERE id=$1`
+	ct, err := tx.Exec(ctx, query, *id)
+	if err != nil {
+		log.Println("Error al modificar sala:", err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+
+	if ct.RowsAffected() == 0 {
+		return datatype.NewNotFoundError("Sala no encontrada")
+	}
+
+	// Confirmar transacción
+	err = tx.Commit(ctx)
+	if err != nil {
+		log.Println("Error al confirmar transacción:", err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	committed = true
+	return nil
 }
 
 func (s SalaRepository) ActualizarUsoSalas(ctx context.Context) (*[]int, error) {
@@ -33,11 +183,10 @@ func (s SalaRepository) ActualizarUsoSalas(ctx context.Context) (*[]int, error) 
 		}
 	}()
 
-	// 1. Finalizar usos de sala cuyo fin ya pasó
+	// 1. Finalizar usos de sala cuyo fin ya pasó y obtener sala_id
 	query := `
 		UPDATE uso_sala us
-		SET estado = 'Finalizado',
-		    actualizado_en = NOW()
+		SET estado = 'Finalizado', actualizado_en = NOW()
 		WHERE us.estado = 'En uso'
 		  AND us.fin IS NOT NULL
 		  AND us.fin <= NOW()
@@ -48,59 +197,38 @@ func (s SalaRepository) ActualizarUsoSalas(ctx context.Context) (*[]int, error) 
 		log.Println("Error al ejecutar UPDATE uso_sala:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
+	defer rows.Close()
 
-	salasMap := make(map[int]struct{})
+	var salas []int
 	for rows.Next() {
 		var salaId int
 		if err := rows.Scan(&salaId); err != nil {
 			log.Println("Error al escanear sala_id:", err)
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
-		salasMap[salaId] = struct{}{}
+		salas = append(salas, salaId)
 	}
 	if err := rows.Err(); err != nil {
 		log.Println("Error en iteración de filas uso_sala:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
-	rows.Close()
-	// Convertimos map a slice
-	var salas []int
-	for id := range salasMap {
-		salas = append(salas, id)
-	}
 
-	// 2. Obtener los dispositivos de esas salas
-	var dispositivosIds []int
-	query = `SELECT s.dispositivo_id FROM sala s WHERE s.id = ANY($1::int[]) AND s.dispositivo_id IS NOT NULL`
-	rows, err = tx.Query(ctx, query, pq.Array(salas))
-	if err != nil {
-		log.Println("Error al obtener dispositivos:", err)
-		return nil, datatype.NewInternalServerErrorGeneric()
-	}
-
-	for rows.Next() {
-		var dispositivoId int
-		if err := rows.Scan(&dispositivoId); err != nil {
-			log.Println("Error al escanear dispositivo_id:", err)
-			return nil, datatype.NewInternalServerErrorGeneric()
-		}
-		dispositivosIds = append(dispositivosIds, dispositivoId)
-	}
-	if err := rows.Err(); err != nil {
-		log.Println("Error en iteración de filas dispositivos:", err)
-		return nil, datatype.NewInternalServerErrorGeneric()
-	}
-	rows.Close()
-	// 3. Actualizar dispositivos a Inactivo
-	if len(dispositivosIds) > 0 {
-		query = `UPDATE dispositivo SET estado = 'Inactivo', eliminado_en = now() WHERE id = ANY($1::int[])`
-		if _, err = tx.Exec(ctx, query, pq.Array(dispositivosIds)); err != nil {
+	if len(salas) > 0 {
+		// 2. Actualizar dispositivos en un solo query usando subconsulta
+		query = `
+			UPDATE dispositivo d
+			SET estado = 'Inactivo'
+			FROM sala s
+			WHERE d.id = s.dispositivo_id
+			  AND s.id = ANY($1::int[])
+		`
+		if _, err := tx.Exec(ctx, query, pq.Array(salas)); err != nil {
 			log.Println("Error al actualizar dispositivos:", err)
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
 	}
 
-	// 4. Confirmar transacción
+	// 3. Commit de transacción
 	if err = tx.Commit(ctx); err != nil {
 		log.Println("Error al confirmar transacción:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
@@ -245,7 +373,7 @@ func (s SalaRepository) ReanudarTiempoUsoSala(ctx context.Context, salaId *int) 
 		}
 		return datatype.NewInternalServerErrorGeneric()
 	}
-	query = `UPDATE dispositivo SET estado='Activo',eliminado_en=NULL WHERE id=$1`
+	query = `UPDATE dispositivo SET estado='Activo' WHERE id=$1`
 	_, err = tx.Exec(ctx, query, dispositivoId)
 	if err != nil {
 		log.Println("Error al actualizar dispositivo:", err)
@@ -303,7 +431,7 @@ func (s SalaRepository) PausarTiempoUsoSala(ctx context.Context, salaId *int) er
 		}
 		return datatype.NewInternalServerErrorGeneric()
 	}
-	query = `UPDATE dispositivo SET estado='Inactivo',eliminado_en=now() WHERE id=$1`
+	query = `UPDATE dispositivo SET estado='Inactivo' WHERE id=$1`
 	_, err = tx.Exec(ctx, query, dispositivoId)
 	if err != nil {
 		log.Println("Error al actualizar dispositivo:", err)
@@ -406,7 +534,7 @@ func (s SalaRepository) CancelarSala(ctx context.Context, salaId *int) error {
 		}
 		return datatype.NewInternalServerErrorGeneric()
 	}
-	query = `UPDATE dispositivo SET estado='Inactivo',eliminado_en=now() WHERE id=$1`
+	query = `UPDATE dispositivo SET estado='Inactivo' WHERE id=$1`
 	_, err = tx.Exec(ctx, query, dispositivoId)
 	if err != nil {
 		log.Println("Error al actualizar dispositivo:", err)
@@ -470,7 +598,7 @@ RETURNING id`
 		}
 		return datatype.NewInternalServerErrorGeneric()
 	}
-	query = `UPDATE dispositivo SET estado='Activo',eliminado_en=NULL WHERE id=$1`
+	query = `UPDATE dispositivo SET estado='Activo' WHERE id=$1`
 	_, err = tx.Exec(ctx, query, dispositivoId)
 	if err != nil {
 		log.Println("Error al actualizar dispositivo:", err)
@@ -499,7 +627,11 @@ func (s SalaRepository) RegistrarSala(ctx context.Context, request *domain.SalaR
 			_ = tx.Rollback(ctx)
 		}
 	}()
-	query := `INSERT INTO sala(nombre,sucursal_id,dispositivo_id) VALUES($1,$2,$3) RETURNING id`
+
+	query := `INSERT INTO sala(nombre, sucursal_id, dispositivo_id) 
+	          VALUES ($1, $2, $3) 
+	          RETURNING id`
+
 	var id int
 	err = tx.QueryRow(ctx, query, request.Nombre, request.SucursalId, request.DispositivoId).Scan(&id)
 	if err != nil {
@@ -508,19 +640,24 @@ func (s SalaRepository) RegistrarSala(ctx context.Context, request *domain.SalaR
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "23505": // unique_violation
-				if pgErr.ConstraintName == "unique_nombre_sala" {
+				switch pgErr.ConstraintName {
+				case "unique_nombre_sala":
 					return nil, datatype.NewConflictError("Ya existe una sala con ese nombre en esa sucursal")
+				case "unique_dispositivo_sala":
+					return nil, datatype.NewConflictError("El dispositivo ya está asignado a una sala en esta sucursal")
 				}
 			case "23503": // foreign_key_violation
-				if pgErr.ConstraintName == "sala_sucursal_id_fkey" {
+				switch pgErr.ConstraintName {
+				case "sala_sucursal_id_fkey":
 					return nil, datatype.NewBadRequestError("La sucursal especificada no existe")
+				case "sala_dispositivo_id_fkey":
+					return nil, datatype.NewBadRequestError("El dispositivo especificado no existe")
 				}
 			}
-
 		}
-
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
+
 	// Confirmar transacción
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -546,8 +683,8 @@ func (s SalaRepository) ModificarSala(ctx context.Context, id *int, request *dom
 		}
 	}()
 
-	query := `UPDATE sala SET nombre=$1,sucursal_id=$2 WHERE id=$3`
-	ct, err := tx.Exec(ctx, query, request.Nombre, request.SucursalId, *id)
+	query := `UPDATE sala SET nombre=$1,sucursal_id=$2,dispositivo_id=$3 WHERE id=$4`
+	ct, err := tx.Exec(ctx, query, request.Nombre, request.SucursalId, request.DispositivoId, *id)
 	if err != nil {
 		log.Println("Error al modificar sala:", err)
 		if err != nil {
@@ -611,6 +748,7 @@ SELECT
 		'nombre', d.nombre,
 		'estado', d.estado,
 		'creadoEn', d.creado_en,
+		'enLinea',d.en_linea,
 		'usuario', COALESCE(
 			jsonb_build_object(
 				'id', u.id,
@@ -641,7 +779,9 @@ SELECT
                 'estado', us.estado
             )
         ELSE 'null'::jsonb
-    END) AS uso
+    END) AS uso,
+    s.actualizado_en,
+    s.eliminado_en
 FROM sala s
 LEFT JOIN public.sucursal s2 ON s2.id = s.sucursal_id
 LEFT JOIN public.pais p ON p.id = s2.pais_id
@@ -659,7 +799,9 @@ WHERE s.id = $1
 LIMIT 1
 `
 	var sala domain.SalaDetail
-	err := s.pool.QueryRow(ctx, query, *id).Scan(&sala.Id, &sala.Nombre, &sala.Estado, &sala.CreadoEn, &sala.ActualizadoEn, &sala.EliminadoEn, &sala.Sucursal, &sala.Pais, &sala.Dispositivo, &sala.Uso)
+	err := s.pool.QueryRow(ctx, query, *id).
+		Scan(&sala.Id, &sala.Nombre, &sala.Estado, &sala.CreadoEn, &sala.ActualizadoEn, &sala.EliminadoEn, &sala.Sucursal,
+			&sala.Pais, &sala.Dispositivo, &sala.Uso, &sala.ActualizadoEn, &sala.EliminadoEn)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, datatype.NewNotFoundError("Sala no encontrada")
@@ -672,7 +814,7 @@ func (s SalaRepository) ObtenerListaSalas(ctx context.Context, filtros map[strin
 	var filters []string
 	var args []interface{}
 	i := 1
-
+	filters = append(filters, "s.eliminado_en IS NULL")
 	// Si hay sucursalId en filtros
 	if sucursalID := filtros["sucursalId"]; sucursalID != "" {
 		filters = append(filters, fmt.Sprintf("s.sucursal_id = $%d", i))
@@ -699,6 +841,7 @@ SELECT
 		'nombre', d.nombre,
 		'estado', d.estado,
 		'creadoEn', d.creado_en,
+		'enLinea',d.en_linea,
 		'usuario', COALESCE(
 		jsonb_build_object(
 				'id', u.id,
@@ -731,7 +874,9 @@ SELECT
                 ) 
             ELSE NULL
         END
-    ) AS uso
+    ) AS uso,
+    s.actualizado_en,
+    s.eliminado_en
 FROM sala s
 LEFT JOIN LATERAL (
     SELECT *
@@ -761,7 +906,7 @@ LEFT JOIN usuario u ON d.usuario_id = u.id
 
 	for rows.Next() {
 		var sala domain.SalaInfo
-		if err = rows.Scan(&sala.Id, &sala.Nombre, &sala.Estado, &sala.CreadoEn, &sala.Dispositivo, &sala.Uso); err != nil {
+		if err = rows.Scan(&sala.Id, &sala.Nombre, &sala.Estado, &sala.CreadoEn, &sala.Dispositivo, &sala.Uso, &sala.ActualizadoEn, &sala.EliminadoEn); err != nil {
 			log.Println("Error al escanear sala:", err)
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
@@ -786,7 +931,7 @@ func (s SalaRepository) HabilitarSala(ctx context.Context, id *int) error {
 		}
 	}()
 
-	query := `UPDATE sala SET estado='Activo',actualizado_en=now(),eliminado_en=NULL WHERE id=$1`
+	query := `UPDATE sala SET estado='Activo',actualizado_en=now() WHERE id=$1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		log.Println("Error al modificar sala:", err)
@@ -822,7 +967,7 @@ func (s SalaRepository) DeshabilitarSala(ctx context.Context, id *int) error {
 		}
 	}()
 
-	query := `UPDATE sala SET estado='Inactivo',actualizado_en=now(),eliminado_en=now() WHERE id=$1`
+	query := `UPDATE sala SET estado='Inactivo',actualizado_en=now() WHERE id=$1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		log.Println("Error al modificar sala:", err)

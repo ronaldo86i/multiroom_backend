@@ -3,10 +3,12 @@ package domain
 import "time"
 
 type Sala struct {
-	Id       int       `json:"id"`
-	Nombre   string    `json:"nombre"`
-	Estado   string    `json:"estado"`
-	CreadoEn time.Time `json:"creadoEn"`
+	Id            int        `json:"id"`
+	Nombre        string     `json:"nombre"`
+	Estado        string     `json:"estado"`
+	CreadoEn      time.Time  `json:"creadoEn"`
+	ActualizadoEn time.Time  `json:"actualizadoEn"`
+	EliminadoEn   *time.Time `json:"eliminadoEn"`
 }
 type SalaRequest struct {
 	Nombre        string `json:"nombre"`
@@ -38,12 +40,10 @@ type SalaInfo struct {
 
 type SalaDetail struct {
 	Sala
-	ActualizadoEn time.Time       `json:"actualizadoEn"`
-	EliminadoEn   *time.Time      `json:"eliminadoEn"`
-	Sucursal      SucursalInfo    `json:"sucursal"`
-	Pais          PaisInfo        `json:"pais"`
-	Dispositivo   DispositivoInfo `json:"dispositivo,omitempty"`
-	Uso           *UsoSala        `json:"uso,omitempty"`
+	Sucursal    SucursalInfo    `json:"sucursal"`
+	Pais        PaisInfo        `json:"pais"`
+	Dispositivo DispositivoInfo `json:"dispositivo,omitempty"`
+	Uso         *UsoSala        `json:"uso,omitempty"`
 }
 type SalaId struct {
 	Id int `json:"id"`
