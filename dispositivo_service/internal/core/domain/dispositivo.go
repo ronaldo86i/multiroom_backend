@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type DispositivoRequest struct {
 	Nombre        string `json:"nombre"`
@@ -16,4 +19,39 @@ type DispositivoInfo struct {
 	CreadoEn      time.Time      `json:"creadoEn"`
 	Usuario       *UsuarioSimple `json:"usuario,omitempty"`
 	EnLinea       bool           `json:"enLinea"`
+}
+
+type DispositivoState struct {
+	mu       sync.Mutex
+	EnLinea  bool
+	NotifyCh chan bool
+}
+
+func (d *DispositivoState) SetEnLinea(val bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Evita notificaciones redundantes
+	if d.EnLinea == val {
+		return
+	}
+
+	d.EnLinea = val
+
+	// Notifica cambio de estado sin bloquear
+	select {
+	case d.NotifyCh <- val:
+	default:
+		// Si el canal está lleno, no bloquea
+	}
+}
+
+func (d *DispositivoState) GetEnLinea() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.EnLinea
+}
+
+type DispositivoMensaje struct {
+	Type string `json:"type"`
 }
