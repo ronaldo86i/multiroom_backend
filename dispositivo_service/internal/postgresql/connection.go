@@ -56,13 +56,13 @@ func Connection() error {
 
 		logger = slog.New(
 			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-				Level: slog.LevelDebug,
+				Level: slog.LevelError,
 			}),
 		)
 
 		config.ConnConfig.Tracer = &tracelog.TraceLog{
 			Logger:   slog_logger.NewLogger(logger),
-			LogLevel: tracelog.LogLevelTrace,
+			LogLevel: tracelog.LogLevelError,
 		}
 
 		config.MaxConns = 30

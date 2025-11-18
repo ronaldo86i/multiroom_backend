@@ -10,7 +10,7 @@ type ClienteService struct {
 	clienteRepository port.ClienteRepository
 }
 
-func (c ClienteService) RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int, error) {
+func (c ClienteService) RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int64, error) {
 	return c.clienteRepository.RegistrarCliente(ctx, request)
 }
 

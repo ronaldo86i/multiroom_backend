@@ -2,12 +2,13 @@ package port
 
 import (
 	"context"
-	"github.com/gofiber/fiber/v2"
 	"multiroom/dispositivo-service/internal/core/domain"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type ClienteRepository interface {
-	RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int, error)
+	RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int64, error)
 	ModificarCliente(ctx context.Context, id *int, request *domain.ClienteRequest) error
 	ObtenerListaClientes(ctx context.Context, filtros map[string]string) (*[]domain.ClienteInfo, error)
 	ObtenerClienteDetailById(ctx context.Context, id *int) (*domain.ClienteDetail, error)
@@ -16,7 +17,7 @@ type ClienteRepository interface {
 }
 
 type ClienteService interface {
-	RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int, error)
+	RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int64, error)
 	ModificarCliente(ctx context.Context, id *int, request *domain.ClienteRequest) error
 	ObtenerListaClientes(ctx context.Context, filtros map[string]string) (*[]domain.ClienteInfo, error)
 	ObtenerClienteDetailById(ctx context.Context, id *int) (*domain.ClienteDetail, error)

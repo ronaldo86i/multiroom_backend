@@ -17,7 +17,7 @@ type ClienteRepository struct {
 	pool *pgxpool.Pool
 }
 
-func (c ClienteRepository) RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int, error) {
+func (c ClienteRepository) RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int64, error) {
 	// Iniciar transacción
 	tx, err := c.pool.Begin(ctx)
 	if err != nil {
@@ -31,7 +31,7 @@ func (c ClienteRepository) RegistrarCliente(ctx context.Context, request *domain
 		}
 	}()
 	// Insertar usuario
-	var clienteId int
+	var clienteId int64
 	query := `INSERT INTO cliente(celular, codigo_pais, nombres, apellidos, fecha_nacimiento) VALUES ($1, $2, $3, $4, $5) RETURNING id`
 	err = tx.QueryRow(ctx, query, request.Celular, request.CodigoPais, request.Nombres, request.Apellidos, request.FechaNacimiento).Scan(&clienteId)
 	if err != nil {

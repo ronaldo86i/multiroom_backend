@@ -1,8 +1,9 @@
 package domain
 
 import (
-	"github.com/jackc/pgx/v5/pgtype"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ClienteRequest struct {
@@ -14,11 +15,11 @@ type ClienteRequest struct {
 }
 
 type ClienteIdResponse struct {
-	Id int `json:"id"`
+	Id int64 `json:"id"`
 }
 
 type ClienteInfo struct {
-	Id              int         `json:"id"`
+	Id              int64       `json:"id"`
 	Nombres         string      `json:"nombres"`
 	Apellidos       string      `json:"apellidos"`
 	FechaNacimiento pgtype.Date `json:"fechaNacimiento"`
@@ -29,7 +30,7 @@ type ClienteInfo struct {
 }
 
 type ClienteDetail struct {
-	Id              int         `json:"id"`
+	Id              int64       `json:"id"`
 	Nombres         string      `json:"nombres"`
 	Apellidos       string      `json:"apellidos"`
 	FechaNacimiento pgtype.Date `json:"fechaNacimiento"`

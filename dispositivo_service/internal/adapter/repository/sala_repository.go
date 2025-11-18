@@ -53,6 +53,7 @@ SELECT
     (
         CASE WHEN  (us.estado != 'Finalizado' AND us.estado!= 'Cancelado') THEN
             jsonb_build_object(
+            	'id',us.id,
                 'cliente', COALESCE(
                     jsonb_build_object(
                         'id', c.id,
