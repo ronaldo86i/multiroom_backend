@@ -2,13 +2,14 @@ package handler
 
 import (
 	"errors"
-	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/auth-service/internal/core/domain"
 	"multiroom/auth-service/internal/core/domain/datatype"
 	"multiroom/auth-service/internal/core/port"
 	"multiroom/auth-service/internal/core/util"
 	"net/http"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type UsuarioHandler struct {
