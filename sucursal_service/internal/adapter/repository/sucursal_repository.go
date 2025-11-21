@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type SucursalRepository struct {
@@ -78,6 +79,17 @@ func (s SucursalRepository) ModificarSucursal(ctx context.Context, id *int, requ
 	ct, err := tx.Exec(ctx, query, request.Nombre, request.PaisId, *id)
 	if err != nil {
 		log.Println("Ha ocurrido un error en la transacción:", err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				if pgErr.ConstraintName == "unique_nombre_sucursal" {
+					return datatype.NewConflictError("Ya existe una sucursal con ese nombre en ese país")
+				}
+				// Otra violación única
+				return datatype.NewInternalServerErrorGeneric()
+			}
+		}
 		return datatype.NewInternalServerErrorGeneric()
 	}
 	if ct.RowsAffected() == 0 {

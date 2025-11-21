@@ -10,7 +10,7 @@ type SalaService struct {
 	salaRepository port.SalaRepository
 }
 
-func (s SalaService) ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error) {
+func (s SalaService) ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.SalaDetail, error) {
 	return s.salaRepository.ObtenerListaUsoSalas(ctx, filtros)
 }
 
@@ -34,7 +34,7 @@ func (s SalaService) CancelarSala(ctx context.Context, salaId *int) error {
 	return s.salaRepository.CancelarSala(ctx, salaId)
 }
 
-func (s SalaService) AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) error {
+func (s SalaService) AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) (*int64, error) {
 	return s.salaRepository.AsignarTiempoUsoSala(ctx, request)
 }
 

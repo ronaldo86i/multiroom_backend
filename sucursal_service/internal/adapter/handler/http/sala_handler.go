@@ -3,14 +3,15 @@ package http
 import (
 	"errors"
 	"fmt"
-	"github.com/gofiber/fiber/v2"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/util"
 	"net/http"
+
+	"github.com/gofiber/fiber/v2"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type SalaHandler struct {
@@ -218,7 +219,8 @@ func (s SalaHandler) AsignarTiempoUsoSala(c *fiber.Ctx) error {
 	}
 
 	// Asignar tiempo
-	if err := s.salaService.AsignarTiempoUsoSala(c.UserContext(), &request); err != nil {
+	usoId, err := s.salaService.AsignarTiempoUsoSala(c.UserContext(), &request)
+	if err != nil {
 		return handleError(err)
 	}
 
@@ -228,7 +230,7 @@ func (s SalaHandler) AsignarTiempoUsoSala(c *fiber.Ctx) error {
 	}
 	publishSalaAsync(s.rabbitMQService, *sala, salaId)
 
-	return c.JSON(util.NewMessage("Se ha asignado tiempo de uso correctamente"))
+	return c.JSON(util.NewMessageData(domain.UsoSalaId{Id: *usoId}, "Se ha asignado tiempo de uso correctamente"))
 }
 
 func (s SalaHandler) PausarTiempoUsoSala(c *fiber.Ctx) error {
@@ -314,7 +316,7 @@ func (s SalaHandler) ReanudarTiempoUsoSala(c *fiber.Ctx) error {
 func (s SalaHandler) RegistrarSala(c *fiber.Ctx) error {
 	var request domain.SalaRequest
 	if err := c.BodyParser(&request); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida"))
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida: datos incompletos o incorrectos"))
 	}
 
 	salaId, err := s.salaService.RegistrarSala(c.UserContext(), &request)
@@ -334,7 +336,7 @@ func (s SalaHandler) RegistrarSala(c *fiber.Ctx) error {
 func (s SalaHandler) ModificarSala(c *fiber.Ctx) error {
 	var request domain.SalaRequest
 	if err := c.BodyParser(&request); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida"))
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida: datos incompletos o incorrectos"))
 	}
 	salaId, _ := c.ParamsInt("salaId", 0)
 

@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"log"
 	"multiroom/sucursal-service/internal/core/port"
-	"runtime"
 	"time"
-	"weak"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+var ticker *time.Ticker
+
 func UsoSalasActualizar(ctx context.Context, salaService port.SalaService, rabbitMQService port.RabbitMQService) {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker = time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
 	// Ejecuta inmediatamente al iniciar
@@ -35,9 +35,8 @@ func runOnce(ctx context.Context, salaService port.SalaService, rabbitMQService 
 		log.Println("Error al actualizar uso de salas:", err)
 		return
 	}
-	weakSalasIds := weak.Make(salasIds)
-	ids := weakSalasIds.Value()
-	if ids == nil || len(*ids) == 0 {
+	// Usamos la variable original directamente
+	if salasIds == nil || len(*salasIds) == 0 {
 		return
 	}
 
@@ -49,12 +48,11 @@ func runOnce(ctx context.Context, salaService port.SalaService, rabbitMQService 
 		return
 	}
 
-	weakSalas := weak.Make(salas)
-	s := weakSalas.Value()
-	if s == nil || len(*s) == 0 {
+	if salas == nil || len(*salas) == 0 {
 		return
 	}
-	for _, sala := range *s {
+
+	for _, sala := range *salas {
 		// Publica en canal individual
 		if err := rabbitMQService.Publish(fmt.Sprintf("salas_%d", sala.Id), sala, amqp.Table{
 			amqp.QueueMaxLenArg:   int32(1),
@@ -81,5 +79,4 @@ func runOnce(ctx context.Context, salaService port.SalaService, rabbitMQService 
 			log.Printf("Error al publicar en %s: %s", channel, err.Error())
 		}
 	}
-	runtime.GC()
 }

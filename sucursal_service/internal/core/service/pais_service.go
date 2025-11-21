@@ -4,7 +4,9 @@ import (
 	"context"
 	"mime/multipart"
 	"multiroom/sucursal-service/internal/core/domain"
+	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
+	"multiroom/sucursal-service/internal/core/util"
 )
 
 type PaisService struct {
@@ -20,10 +22,16 @@ func (p PaisService) DeshabilitarPaisById(ctx context.Context, id *int) error {
 }
 
 func (p PaisService) RegistrarPais(ctx context.Context, request *domain.PaisRequest, fileHeader *multipart.FileHeader) (*int, error) {
+	if !util.File.ValidarTipoArchivo(fileHeader.Filename, ".png", ".jpg", ".jpeg") {
+		return nil, datatype.NewBadRequestError("Tipo de archivo no válido")
+	}
 	return p.paisRepository.RegistrarPais(ctx, request, fileHeader)
 }
 
 func (p PaisService) ModificarPais(ctx context.Context, id *int, request *domain.PaisRequest, fileHeader *multipart.FileHeader) error {
+	if !util.File.ValidarTipoArchivo(fileHeader.Filename, ".png", ".jpg", ".jpeg") {
+		return datatype.NewBadRequestError("Tipo de archivo no válido")
+	}
 	return p.paisRepository.ModificarPais(ctx, id, request, fileHeader)
 }
 

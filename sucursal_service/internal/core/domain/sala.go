@@ -21,15 +21,20 @@ type UsoSalaRequest struct {
 	ClienteId int   `json:"clienteId"`
 	TiempoUso int64 `json:"tiempoUso"`
 }
+type UsoSalaId struct {
+	Id int64 `json:"id"`
+}
 
 type UsoSala struct {
-	Cliente       ClienteInfo `json:"cliente"`
-	Inicio        time.Time   `json:"inicio"`
-	Fin           *time.Time  `json:"fin,omitempty"`
-	PausadoEn     *time.Time  `json:"pausadoEn,omitempty"`
-	DuracionPausa float64     `json:"duracionPausa"`
-	TiempoUso     float64     `json:"tiempoUso"`
-	Estado        string      `json:"estado"`
+	UsoSalaId
+	Cliente       *ClienteInfo `json:"cliente,omitempty"`
+	Inicio        time.Time    `json:"inicio"`
+	Fin           *time.Time   `json:"fin,omitempty"`
+	PausadoEn     *time.Time   `json:"pausadoEn,omitempty"`
+	DuracionPausa float64      `json:"duracionPausa"`
+	TiempoUso     float64      `json:"tiempoUso"`
+	Estado        string       `json:"estado"`
+	CostoTiempo   float64      `json:"costoTiempo"`
 }
 
 type SalaInfo struct {

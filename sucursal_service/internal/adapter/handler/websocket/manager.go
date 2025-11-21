@@ -1,8 +1,9 @@
 package websocket
 
 import (
-	"github.com/gofiber/contrib/websocket"
 	"sync"
+
+	"github.com/gofiber/contrib/websocket"
 )
 
 type SyncMap struct {

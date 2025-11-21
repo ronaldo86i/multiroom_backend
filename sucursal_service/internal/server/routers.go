@@ -57,8 +57,8 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	// path: /api/v1/salas
 	v1Salas := v1.Group("/salas")
 	v1Salas.Use(middleware.HostnameMiddleware)
-	v1Salas.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ObtenerListaSalas)
-	v1Salas.Get("/uso", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ObtenerListaUsoSalas)
+	v1Salas.Get("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Sala.ObtenerListaSalas)
+	v1Salas.Get("/uso", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Sala.ObtenerListaUsoSalas)
 	v1Salas.Get("/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ObtenerSalaById)
 	v1Salas.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.RegistrarSala)
 	v1Salas.Put("/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ModificarSala)
@@ -74,6 +74,64 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1AccionesSalas.Patch("/reanudar/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.ReanudarTiempoUsoSala)
 	v1AccionesSalas.Patch("/incrementar/:salaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Sala.IncrementarTiempoUsoSala)
 
+	// path: /api/v1/proveedores
+	v1Proveedores := v1.Group("/proveedores")
+	v1Proveedores.Use(middleware.HostnameMiddleware)
+	v1Proveedores.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Proveedor.ListarProveedores)
+	v1Proveedores.Get("/:proveedorId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Proveedor.ObtenerProveedorById)
+	v1Proveedores.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Proveedor.RegistrarProveedor)
+	v1Proveedores.Put("/:proveedorId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Proveedor.ModificarProveedor)
+
+	// path: /api/v1/productos
+	v1Productos := v1.Group("/productos")
+	v1Productos.Use(middleware.HostnameMiddleware)
+	v1Productos.Get("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Producto.ListarProductos)
+	v1Productos.Get("/:productoId", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Producto.ObtenerProductoById)
+	v1Productos.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Producto.RegistrarProducto)
+	v1Productos.Put("/:productoId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Producto.ModificarProductoById)
+
+	// path: /api/v1/ubicaciones
+	v1Ubicaciones := v1.Group("/ubicaciones")
+	v1Ubicaciones.Use(middleware.HostnameMiddleware)
+	v1Ubicaciones.Get("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Ubicacion.ListarUbicaciones)
+	v1Ubicaciones.Get("/:ubicacionId", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Ubicacion.ObtenerUbicacionById)
+	v1Ubicaciones.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Ubicacion.RegistrarUbicacion)
+	v1Ubicaciones.Put("/:ubicacionId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Ubicacion.ModificarUbicacionById)
+	v1Ubicaciones.Patch("/:ubicacionId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Ubicacion.HabilitarUbicacion)
+	v1Ubicaciones.Patch("/:ubicacionId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Ubicacion.DeshabilitarUbicacion)
+
+	// path: /api/v1/compras
+	v1Compras := v1.Group("/compras")
+	v1Compras.Use(middleware.HostnameMiddleware)
+	v1Compras.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Compra.ListarCompras)
+	v1Compras.Get("/:compraId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Compra.ObtenerCompraById)
+	v1Compras.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Compra.RegistrarOrdenCompra)
+	v1Compras.Put("/:compraId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Compra.ModificarOrdenCompra)
+	v1Compras.Post("/:compraId/completar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Compra.ConfirmarRecepcionCompra)
+
+	// path: /api/v1/inventario
+	v1Inventario := v1.Group("/inventario")
+	v1Inventario.Use(middleware.HostnameMiddleware)
+	v1Inventario.Get("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Inventario.ListarInventario)
+
+	v1Inventario.Get("/ajustes", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Inventario.ListarAjustes)
+	v1Inventario.Get("/ajustes/:ajusteId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Inventario.ObtenerAjusteById)
+	v1Inventario.Post("/ajustes", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Inventario.RegistrarAjusteConDetalle)
+
+	v1Inventario.Get("/transferencias", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Inventario.ListarTransferencias)
+	v1Inventario.Get("/transferencias/:transferenciaId", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Inventario.ObtenerTransferenciaById)
+	v1Inventario.Post("/transferencias", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Inventario.RegistrarTransferencia)
+
+	v1Ventas := v1.Group("/ventas")
+	v1Ventas.Use(middleware.HostnameMiddleware)
+	v1Ventas.Get("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Venta.ListarVentas)
+	v1Ventas.Get("/:ventaId", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Venta.ObtenerVenta)
+	v1Ventas.Post("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Venta.RegistrarVenta)
+	v1Ventas.Post("/:ventaId/pagar", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Venta.RegistrarPagoVenta)
+	v1Ventas.Post("/:ventaId/anular", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.Venta.AnularVentaById)
+
+	v1MetodosPagos := v1.Group("/metodos-pago")
+	v1MetodosPagos.Get("", middleware.VerifyUsuarioAdmin("ADMIN", "EMPLEADO"), s.handlers.MetodoPago.ListarMetodosPago)
 	// path: /api/v1/app-version
 	v1AppVersion := v1.Group("/app-version")
 	v1AccionesSalas.Use(middleware.HostnameMiddleware)

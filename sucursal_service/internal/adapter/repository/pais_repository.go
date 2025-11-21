@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"mime/multipart"
 	"multiroom/sucursal-service/internal/core/domain"
@@ -13,6 +12,8 @@ import (
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/util"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PaisRepository struct {
@@ -132,7 +133,7 @@ func (p PaisRepository) RegistrarPais(ctx context.Context, request *domain.PaisR
 	// Guardar archivo
 	err = util.File.SaveFile(routeDir, nombreArchivo, file)
 	if err != nil {
-		log.Println("Error al guardad imagen:", err)
+		log.Println("Error al guardar imagen:", err)
 		return nil, datatype.NewInternalServerError("Error al guardar imagen")
 	}
 	// Confirmar transacción

@@ -1,12 +1,13 @@
 package setup
 
 import (
-	"github.com/joho/godotenv"
 	"log"
 	httpHandler "multiroom/sucursal-service/internal/adapter/handler/http"
 	"multiroom/sucursal-service/internal/adapter/repository"
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/service"
+
+	"github.com/joho/godotenv"
 
 	"os"
 
@@ -20,6 +21,13 @@ type Repository struct {
 	Sucursal   port.SucursalRepository
 	Sala       port.SalaRepository
 	AppVersion port.AppVersionRepository
+	Proveedor  port.ProveedorRepository
+	Producto   port.ProductoRepository
+	Ubicacion  port.UbicacionRepository
+	Compra     port.CompraRepository
+	Inventario port.InventarioRepository
+	Venta      port.VentaRepository
+	MetodoPago port.MetodoPagoRepository
 }
 
 type Service struct {
@@ -28,6 +36,13 @@ type Service struct {
 	Sala       port.SalaService
 	RabbitMQ   port.RabbitMQService
 	AppVersion port.AppVersionService
+	Proveedor  port.ProveedorService
+	Producto   port.ProductoService
+	Ubicacion  port.UbicacionService
+	Compra     port.CompraService
+	Inventario port.InventarioService
+	Venta      port.VentaService
+	MetodoPago port.MetodoPagoService
 }
 
 type Handler struct {
@@ -36,6 +51,13 @@ type Handler struct {
 	Sala       port.SalaHandler
 	SalaWS     port.SalaHandlerWS
 	AppVersion port.AppVersionHandler
+	Proveedor  port.ProveedorHandler
+	Producto   port.ProductoHandler
+	Ubicacion  port.UbicacionHandler
+	Compra     port.CompraHandler
+	Inventario port.InventarioHandler
+	Venta      port.VentaHandler
+	MetodoPago port.MetodoPagoHandler
 }
 
 type Dependencies struct {
@@ -89,19 +111,39 @@ func Init() {
 		repositories.Sucursal = repository.NewSucursalRepository(pool)
 		repositories.Sala = repository.NewSalaRepository(pool)
 		repositories.AppVersion = repository.NewAppVersionRepository(pool)
+		repositories.Proveedor = repository.NewProveedorRepository(pool)
+		repositories.Producto = repository.NewProductoRepository(pool)
+		repositories.Ubicacion = repository.NewUbicacionRepository(pool)
+		repositories.Compra = repository.NewCompraRepository(pool)
+		repositories.Inventario = repository.NewInventarioRepository(pool)
+		repositories.Venta = repository.NewVentaRepository(pool)
+		repositories.MetodoPago = repository.NewMetodoPagoRepository(pool)
 		// Services
 		services.RabbitMQ = service.NewRabbitMQService(os.Getenv("RABBITMQ_URL"))
 		services.Pais = service.NewPaisService(repositories.Pais)
 		services.Sucursal = service.NewSucursalService(repositories.Sucursal)
 		services.Sala = service.NewSalaService(repositories.Sala)
 		services.AppVersion = service.NewAppVersionService(repositories.AppVersion)
+		services.Proveedor = service.NewProveedorService(repositories.Proveedor)
+		services.Producto = service.NewProductoService(repositories.Producto)
+		services.Ubicacion = service.NewUbicacionService(repositories.Ubicacion)
+		services.Compra = service.NewCompraService(repositories.Compra)
+		services.Inventario = service.NewInventarioService(repositories.Inventario)
+		services.Venta = service.NewVentaService(repositories.Venta)
+		services.MetodoPago = service.NewMetodoPagoService(repositories.MetodoPago)
 		// Handlers
 		handlers.Pais = httpHandler.NewPaisHandler(services.Pais)
 		handlers.Sucursal = httpHandler.NewSucursalHandler(services.Sucursal)
 		handlers.SalaWS = wsHandler.NewSalaHandlerWS(services.Sala, services.RabbitMQ)
 		handlers.Sala = httpHandler.NewSalaHandler(services.Sala, services.RabbitMQ)
 		handlers.AppVersion = httpHandler.NewAppVersionHandler(services.AppVersion)
-
+		handlers.Proveedor = httpHandler.NewProveedorHandler(services.Proveedor)
+		handlers.Producto = httpHandler.NewProductoHandler(services.Producto)
+		handlers.Ubicacion = httpHandler.NewUbicacionHandler(services.Ubicacion)
+		handlers.Compra = httpHandler.NewCompraHandler(services.Compra)
+		handlers.Inventario = httpHandler.NewInventarioHandler(services.Inventario)
+		handlers.Venta = httpHandler.NewVentaHandler(services.Venta)
+		handlers.MetodoPago = httpHandler.NewMetodoPagoHandler(services.MetodoPago)
 		instance = d
 	})
 }

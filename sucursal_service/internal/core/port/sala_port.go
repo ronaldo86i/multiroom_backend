@@ -18,12 +18,12 @@ type SalaRepository interface {
 	EliminarSalaById(ctx context.Context, id *int) error
 	IncrementarTiempoUsoSala(ctx context.Context, salaId *int, request *domain.UsoSalaRequest) error
 	CancelarSala(ctx context.Context, salaId *int) error
-	AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) error
+	AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) (*int64, error)
 	PausarTiempoUsoSala(ctx context.Context, salaId *int) error
 	ReanudarTiempoUsoSala(ctx context.Context, salaId *int) error
 	ActualizarUsoSalas(ctx context.Context) (*[]int, error)
 	ObtenerListaSalasDetailByIds(ctx context.Context, ids []int) (*[]domain.SalaDetail, error)
-	ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error)
+	ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.SalaDetail, error)
 }
 
 type SalaService interface {
@@ -36,12 +36,12 @@ type SalaService interface {
 	EliminarSalaById(ctx context.Context, id *int) error
 	IncrementarTiempoUsoSala(ctx context.Context, salaId *int, request *domain.UsoSalaRequest) error
 	CancelarSala(ctx context.Context, salaId *int) error
-	AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) error
+	AsignarTiempoUsoSala(ctx context.Context, request *domain.UsoSalaRequest) (*int64, error)
 	PausarTiempoUsoSala(ctx context.Context, salaId *int) error
 	ReanudarTiempoUsoSala(ctx context.Context, salaId *int) error
 	ActualizarUsoSalas(ctx context.Context) (*[]int, error)
 	ObtenerListaSalasDetailByIds(ctx context.Context, ids []int) (*[]domain.SalaDetail, error)
-	ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.UsoSala, error)
+	ObtenerListaUsoSalas(ctx context.Context, filtros map[string]string) (*[]domain.SalaDetail, error)
 }
 
 type SalaHandler interface {

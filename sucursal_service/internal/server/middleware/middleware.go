@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gofiber/contrib/websocket"
-	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/util"
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/gofiber/contrib/websocket"
+	"github.com/gofiber/fiber/v2"
 )
 
 var (
@@ -42,7 +43,6 @@ func VerifyUser(c *fiber.Ctx) error {
 
 	// Crear agente HTTP con header Authorization
 	url := fmt.Sprintf("http://%s:%s/api/v1/auth/verify", service1, httpPort1)
-	log.Println(url)
 	agent := fiber.Get(url)
 	agent.Set("Authorization", authHeader)
 
@@ -98,7 +98,6 @@ func VerifyUsuarioSucursal(c *fiber.Ctx) error {
 
 	// Crear agente HTTP con header Authorization
 	url := fmt.Sprintf("http://%s:%s/api/v1/auth/sucursal/verify", service1, httpPort1)
-	log.Println(url)
 	agent := fiber.Get(url)
 	agent.Set("Authorization", authHeader)
 
@@ -108,7 +107,7 @@ func VerifyUsuarioSucursal(c *fiber.Ctx) error {
 		log.Println("Errores en la solicitud:", errs)
 		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage("Error al verificar token"))
 	}
-	log.Println(statusCode, string(body))
+
 	if statusCode != http.StatusOK {
 		return c.Status(statusCode).SendString(string(body))
 	}

@@ -3,13 +3,14 @@ package http
 import (
 	"encoding/json"
 	"errors"
-	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/util"
 	"net/http"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type PaisHandler struct {
@@ -21,7 +22,6 @@ func (p PaisHandler) HabilitarPaisById(c *fiber.Ctx) error {
 	if err != nil || paisId <= 0 {
 		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' del país debe ser un número válido mayor a 0"))
 	}
-
 	err = p.paisService.HabilitarPaisById(c.UserContext(), &paisId)
 	if err != nil {
 		log.Print(err.Error())

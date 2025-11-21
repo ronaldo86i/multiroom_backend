@@ -5,10 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/recover"
 	"log/slog"
 	"multiroom/sucursal-service/internal/server/setup"
 	"os"
@@ -17,6 +13,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 var (
@@ -31,7 +32,7 @@ func getCORSOrigins() string {
 		origins := os.Getenv("CORS_ORIGINS")
 		if origins == "" {
 			// Orígenes por defecto para desarrollo
-			origins = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+			origins = "*"
 		}
 		return origins
 	}
