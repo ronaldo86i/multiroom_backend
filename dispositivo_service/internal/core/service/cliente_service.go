@@ -10,6 +10,10 @@ type ClienteService struct {
 	clienteRepository port.ClienteRepository
 }
 
+func (c ClienteService) EliminarClienteById(ctx context.Context, id *int) error {
+	return c.clienteRepository.EliminarClienteById(ctx, id)
+}
+
 func (c ClienteService) RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int64, error) {
 	return c.clienteRepository.RegistrarCliente(ctx, request)
 }

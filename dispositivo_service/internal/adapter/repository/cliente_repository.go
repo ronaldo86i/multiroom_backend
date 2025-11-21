@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"multiroom/dispositivo-service/internal/core/domain"
 	"multiroom/dispositivo-service/internal/core/domain/datatype"
 	"multiroom/dispositivo-service/internal/core/port"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,6 +17,42 @@ import (
 
 type ClienteRepository struct {
 	pool *pgxpool.Pool
+}
+
+func (c ClienteRepository) EliminarClienteById(ctx context.Context, id *int) error {
+	// Iniciar transacción
+	tx, err := c.pool.Begin(ctx)
+	if err != nil {
+		log.Println("Error al iniciar la transacción:", err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	var committed bool
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	// Transacción: Eliminar cliente
+	// Actualizar cliente
+	query := `UPDATE cliente SET estado='Inactivo',actualizado_en=now(),eliminado_en=now() WHERE id=$1 AND eliminado_en IS NULL`
+	ct, err := tx.Exec(ctx, query, *id)
+	if err != nil {
+		log.Println("Error en la transacción:", err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+
+	if ct.RowsAffected() == 0 {
+		return datatype.NewNotFoundError("Cliente no encontrado")
+	}
+	// Confirmar transacción
+	err = tx.Commit(ctx)
+	if err != nil {
+		log.Println("Error al confirmar la transacción:", err)
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	committed = true
+	return nil
 }
 
 func (c ClienteRepository) RegistrarCliente(ctx context.Context, request *domain.ClienteRequest) (*int64, error) {
@@ -109,8 +147,36 @@ func (c ClienteRepository) ModificarCliente(ctx context.Context, id *int, reques
 }
 
 func (c ClienteRepository) ObtenerListaClientes(ctx context.Context, filtros map[string]string) (*[]domain.ClienteInfo, error) {
-	query := `SELECT c.id,c.nombres,c.apellidos,c.codigo_pais,c.celular,c.fecha_nacimiento,c.estado,c.creado_en FROM cliente c ORDER BY c.id`
-	rows, err := c.pool.Query(ctx, query)
+	var filters []string
+	var args []interface{}
+	i := 1
+
+	filters = append(filters, "c.eliminado_en IS NULL")
+	//Si hay nombre en filtros
+	if estado := filtros["estado"]; estado != "" {
+		filters = append(filters, fmt.Sprintf("c.estado = $%d", i))
+		args = append(args, estado)
+		i++
+	}
+
+	query := `
+SELECT 
+    c.id,
+    c.nombres,
+    c.apellidos,
+    c.codigo_pais,
+    c.celular,
+    c.fecha_nacimiento,
+    c.estado,
+    c.creado_en
+FROM cliente c 
+`
+	if len(filters) > 0 {
+		query += " WHERE " + strings.Join(filters, " AND ")
+	}
+
+	query += " ORDER BY c.id"
+	rows, err := c.pool.Query(ctx, query, args...)
 	if err != nil {
 		log.Println("Error al listar la clientes:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
@@ -130,7 +196,7 @@ func (c ClienteRepository) ObtenerListaClientes(ctx context.Context, filtros map
 }
 
 func (c ClienteRepository) ObtenerClienteDetailById(ctx context.Context, id *int) (*domain.ClienteDetail, error) {
-	query := `SELECT c.id,c.nombres,c.apellidos,c.codigo_pais,c.celular,c.fecha_nacimiento,c.estado,c.creado_en,c.actualizado_en,c.eliminado_en FROM cliente c WHERE c.id=$1 LIMIT 1`
+	query := `SELECT c.id,c.nombres,c.apellidos,c.codigo_pais,c.celular,c.fecha_nacimiento,c.estado,c.creado_en,c.actualizado_en,c.eliminado_en FROM cliente c WHERE c.id=$1 AND c.eliminado_en IS NULL LIMIT 1`
 	var cliente domain.ClienteDetail
 	err := c.pool.QueryRow(ctx, query, *id).
 		Scan(&cliente.Id, &cliente.Nombres, &cliente.Apellidos, &cliente.CodigoPais, &cliente.Celular, &cliente.FechaNacimiento, &cliente.Estado, &cliente.CreadoEn, &cliente.ActualizadoEn, &cliente.EliminadoEn)
@@ -160,7 +226,7 @@ func (c ClienteRepository) HabilitarCliente(ctx context.Context, id *int) error 
 
 	// Transacción: Habilitar cliente
 	// Actualizar cliente
-	query := `UPDATE cliente SET estado='Activo',actualizado_en=now(),eliminado_en=NULL WHERE id=$1`
+	query := `UPDATE cliente SET estado='Activo',actualizado_en=now() WHERE id=$1 AND eliminado_en IS NULL`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		log.Println("Error en la transacción:", err)
@@ -196,7 +262,7 @@ func (c ClienteRepository) DeshabilitarCliente(ctx context.Context, id *int) err
 
 	// Transacción: Habilitar cliente
 	// Actualizar cliente
-	query := `UPDATE cliente SET estado='Inactivo',actualizado_en=now(),eliminado_en=now() WHERE id=$1`
+	query := `UPDATE cliente SET estado='Inactivo',actualizado_en=now() WHERE id=$1 AND eliminado_en IS NULL`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		log.Println("Error en la transacción:", err)

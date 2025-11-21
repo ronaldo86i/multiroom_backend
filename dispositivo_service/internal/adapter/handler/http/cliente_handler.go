@@ -2,17 +2,35 @@ package http
 
 import (
 	"errors"
-	"github.com/gofiber/fiber/v2"
 	"log"
 	"multiroom/dispositivo-service/internal/core/domain"
 	"multiroom/dispositivo-service/internal/core/domain/datatype"
 	"multiroom/dispositivo-service/internal/core/port"
 	"multiroom/dispositivo-service/internal/core/util"
 	"net/http"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type ClienteHandler struct {
 	clienteService port.ClienteService
+}
+
+func (c2 ClienteHandler) EliminarClienteById(c *fiber.Ctx) error {
+	clienteId, err := c.ParamsInt("clienteId", 0)
+	if err != nil || clienteId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' del cliente debe ser un número válido mayor a 0"))
+	}
+	err = c2.clienteService.EliminarClienteById(c.UserContext(), &clienteId)
+	if err != nil {
+		log.Print(err.Error())
+		var errorResponse *datatype.ErrorResponse
+		if errors.As(err, &errorResponse) {
+			return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
+		}
+		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
+	}
+	return c.JSON(util.NewMessage("Cliente eliminado correctamente"))
 }
 
 func (c2 ClienteHandler) RegistrarCliente(c *fiber.Ctx) error {

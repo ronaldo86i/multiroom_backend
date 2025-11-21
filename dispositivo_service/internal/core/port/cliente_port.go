@@ -14,6 +14,7 @@ type ClienteRepository interface {
 	ObtenerClienteDetailById(ctx context.Context, id *int) (*domain.ClienteDetail, error)
 	HabilitarCliente(ctx context.Context, id *int) error
 	DeshabilitarCliente(ctx context.Context, id *int) error
+	EliminarClienteById(ctx context.Context, id *int) error
 }
 
 type ClienteService interface {
@@ -23,6 +24,7 @@ type ClienteService interface {
 	ObtenerClienteDetailById(ctx context.Context, id *int) (*domain.ClienteDetail, error)
 	HabilitarCliente(ctx context.Context, id *int) error
 	DeshabilitarCliente(ctx context.Context, id *int) error
+	EliminarClienteById(ctx context.Context, id *int) error
 }
 
 type ClienteHandler interface {
@@ -32,4 +34,5 @@ type ClienteHandler interface {
 	ObtenerClienteDetailById(c *fiber.Ctx) error
 	HabilitarCliente(c *fiber.Ctx) error
 	DeshabilitarCliente(c *fiber.Ctx) error
+	EliminarClienteById(c *fiber.Ctx) error
 }

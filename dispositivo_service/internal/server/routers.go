@@ -1,24 +1,23 @@
 package server
 
 import (
+	"multiroom/dispositivo-service/internal/server/middleware"
+
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"multiroom/dispositivo-service/internal/server/middleware"
-	"time"
 )
 
-func rateLimiter(max int, expiration, delay time.Duration) fiber.Handler {
-	return limiter.New(limiter.Config{
-		Max:        max,        // Intentos máximos
-		Expiration: expiration, // Tiempo de expiración
-		LimitReached: func(c *fiber.Ctx) error {
-			time.Sleep(delay)
-			return c.Next()
-		},
-	})
-
-}
+//func rateLimiter(max int, expiration, delay time.Duration) fiber.Handler {
+//	return limiter.New(limiter.Config{
+//		Max:        max,        // Intentos máximos
+//		Expiration: expiration, // Tiempo de expiración
+//		LimitReached: func(c *fiber.Ctx) error {
+//			time.Sleep(delay)
+//			return c.Next()
+//		},
+//	})
+//
+//}
 
 func (s *Server) initEndPointsHTTP(app *fiber.App) {
 
@@ -53,6 +52,7 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1Clientes.Put("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ModificarCliente)
 	v1Clientes.Patch("/:clienteId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.HabilitarCliente)
 	v1Clientes.Patch("/:clienteId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.DeshabilitarCliente)
+	v1Clientes.Delete("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.EliminarClienteById)
 }
 
 func (s *Server) initEndPointsWS(app *fiber.App) {
