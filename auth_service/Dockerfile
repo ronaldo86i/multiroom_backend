@@ -15,7 +15,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o multiroom_auth ./cmd
+RUN go build -o multiroom_auth "./cmd"
 
 FROM alpine:latest
 
