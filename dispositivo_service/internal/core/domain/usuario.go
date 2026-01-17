@@ -50,13 +50,21 @@ type MessageData[T any] struct {
 	Message string `json:"message"`
 }
 
-type UsuarioAdmin struct {
-	Id           int       `json:"id"`
+type UsuarioAdminId struct {
+	Id int `json:"id"`
+}
+type UsuarioAdminInfo struct {
+	UsuarioAdminId
 	Username     string    `json:"username"`
 	Estado       string    `json:"estado"`
 	PasswordHash string    `json:"-"`
 	CreadoEn     time.Time `json:"creadoEn"`
-	Roles        []RolInfo `json:"roles"`
+}
+type UsuarioAdmin struct {
+	UsuarioAdminInfo
+	Roles      []RolInfo  `json:"roles"`
+	Sucursales []Sucursal `json:"sucursales"`
+	Permisos   []Permiso  `json:"permisos"`
 }
 
 type RolInfo struct {

@@ -35,24 +35,24 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 
 	// path: /api/v1/dispositivos
 	v1Dispositivos := v1.Group("/dispositivos")
-	v1Dispositivos.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.ObtenerListaDispositivos)
+	v1Dispositivos.Get("", middleware.VerifyPermission("dispositivo:ver"), s.handlers.Dispositivo.ObtenerListaDispositivos)
 	v1Dispositivos.Get("/byDispositivoId/:dispositivoId", middleware.VerifyUser, s.handlers.Dispositivo.ObtenerDispositivoByDispositivoId)
 	v1Dispositivos.Post("", middleware.VerifyUser, s.handlers.Dispositivo.RegistrarDispositivo)
-	v1Dispositivos.Patch("/:dispositivoId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.HabilitarDispositivo)
-	v1Dispositivos.Patch("/:dispositivoId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.DeshabilitarDispositivo)
-	v1Dispositivos.Delete("/:dispositivoId/eliminar", middleware.VerifyUsuarioAdmin("ADMIN"), s.handlers.Dispositivo.EliminarDispositivoById)
+	v1Dispositivos.Patch("/:dispositivoId/habilitar", middleware.VerifyPermission("dispositivo:editar"), s.handlers.Dispositivo.HabilitarDispositivo)
+	v1Dispositivos.Patch("/:dispositivoId/deshabilitar", middleware.VerifyPermission("dispositivo:editar"), s.handlers.Dispositivo.DeshabilitarDispositivo)
+	v1Dispositivos.Delete("/:dispositivoId/eliminar", middleware.VerifyPermission("dispositivo:eliminar"), s.handlers.Dispositivo.EliminarDispositivoById)
 	// path: /api/v1/usuarios
 	v1Usuarios := v1.Group("/usuarios")
 	v1Usuarios.Get("/:usuarioId/dispositivos", middleware.VerifyUser, s.handlers.Dispositivo.ObtenerListaDispositivosByUsuarioId)
 
 	v1Clientes := v1.Group("/clientes")
-	v1Clientes.Get("", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ObtenerListaClientes)
-	v1Clientes.Get("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ObtenerClienteDetailById)
-	v1Clientes.Post("", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.RegistrarCliente)
-	v1Clientes.Put("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.ModificarCliente)
-	v1Clientes.Patch("/:clienteId/habilitar", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.HabilitarCliente)
-	v1Clientes.Patch("/:clienteId/deshabilitar", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.DeshabilitarCliente)
-	v1Clientes.Delete("/:clienteId", middleware.VerifyUsuarioAdmin("ADMIN"), middleware.VerifyUsuarioSucursal, s.handlers.Cliente.EliminarClienteById)
+	v1Clientes.Get("", middleware.VerifyPermission("cliente:ver"), s.handlers.Cliente.ObtenerListaClientes)
+	v1Clientes.Get("/:clienteId", middleware.VerifyPermission("cliente:ver"), s.handlers.Cliente.ObtenerClienteDetailById)
+	v1Clientes.Post("", middleware.VerifyPermission("cliente:crear"), s.handlers.Cliente.RegistrarCliente)
+	v1Clientes.Put("/:clienteId", middleware.VerifyPermission("cliente:editar"), s.handlers.Cliente.ModificarCliente)
+	v1Clientes.Patch("/:clienteId/habilitar", middleware.VerifyPermission("cliente:editar"), s.handlers.Cliente.HabilitarCliente)
+	v1Clientes.Patch("/:clienteId/deshabilitar", middleware.VerifyPermission("cliente:editar"), s.handlers.Cliente.DeshabilitarCliente)
+	v1Clientes.Delete("/:clienteId", middleware.VerifyPermission("cliente:eliminar"), s.handlers.Cliente.EliminarClienteById)
 }
 
 func (s *Server) initEndPointsWS(app *fiber.App) {
