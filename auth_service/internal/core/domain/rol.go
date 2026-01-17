@@ -2,14 +2,22 @@ package domain
 
 import "time"
 
+type RolId struct {
+	Id int `json:"id"`
+}
 type Rol struct {
-	Id       int       `json:"id"`
-	Nombre   string    `json:"nombre"`
-	Estado   string    `json:"estado"`
-	CreadoEn time.Time `json:"creadoEn"`
+	RolInfo
+	Permisos []Permiso
+}
+type RolRequest struct {
+	Nombre      string `json:"nombre"`
+	Estado      string `json:"estado"`
+	PermisosIds []int  `json:"permisosIds"`
 }
 
 type RolInfo struct {
-	Id     int    `json:"id"`
-	Nombre string `json:"nombre"`
+	RolId
+	Nombre   string    `json:"nombre"`
+	Estado   string    `json:"estado"`
+	CreadoEn time.Time `json:"creadoEn"`
 }

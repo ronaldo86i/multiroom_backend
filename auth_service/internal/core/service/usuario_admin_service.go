@@ -10,6 +10,18 @@ type UsuarioAdminService struct {
 	usuarioAdminRepository port.UsuarioAdminRepository
 }
 
+func (u UsuarioAdminService) ListarUsuariosAdmin(ctx context.Context, filtros map[string]string) (*[]domain.UsuarioAdminInfo, error) {
+	return u.usuarioAdminRepository.ListarUsuariosAdmin(ctx, filtros)
+}
+
+func (u UsuarioAdminService) RegistrarUsuarioAdmin(ctx context.Context, request *domain.UsuarioAdminRequest) (*int, error) {
+	return u.usuarioAdminRepository.RegistrarUsuarioAdmin(ctx, request)
+}
+
+func (u UsuarioAdminService) ModificarUsuarioAdminById(ctx context.Context, id *int, request *domain.UsuarioAdminRequest) error {
+	return u.usuarioAdminRepository.ModificarUsuarioAdminById(ctx, id, request)
+}
+
 func (u UsuarioAdminService) ObtenerUsuarioAdminByUsername(ctx context.Context, username *string) (*domain.UsuarioAdmin, error) {
 	return u.usuarioAdminRepository.ObtenerUsuarioAdminByUsername(ctx, username)
 }
