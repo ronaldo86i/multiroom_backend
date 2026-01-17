@@ -16,6 +16,19 @@ type VentaHandler struct {
 	ventaService port.VentaService
 }
 
+func (v VentaHandler) ListarProductosVentas(c *fiber.Ctx) error {
+	list, err := v.ventaService.ListarProductosVentas(c.UserContext(), c.Queries())
+	if err != nil {
+		log.Print(err.Error())
+		var errorResponse *datatype.ErrorResponse
+		if errors.As(err, &errorResponse) {
+			return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
+		}
+		return datatype.NewInternalServerErrorGeneric()
+	}
+	return c.JSON(list)
+}
+
 func (v VentaHandler) RegistrarVenta(c *fiber.Ctx) error {
 	var request domain.VentaRequest
 	if err := c.BodyParser(&request); err != nil {

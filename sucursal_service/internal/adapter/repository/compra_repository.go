@@ -166,7 +166,6 @@ SELECT
                    	'nombre',pr.nombre,
                 	'estado',pr.estado,
                     'urlFoto',($1::text || pr.id::text || '/' || pr.foto),
-                    'precio',pr.precio,
                     'creadoEn',pr.creado_en,
                 	'actualizadoEn',pr.actualizado_en,
                 	'eliminadoEn',pr.eliminado_en
@@ -571,10 +570,10 @@ func (c CompraRepository) ConfirmarRecepcionCompra(ctx context.Context, id *int)
 		return datatype.NewInternalServerErrorGeneric()
 	}
 
-	// Actualizar precios en la tabla 'producto' ---
+	// Actualizar precios en la tabla 'producto_sucursal' ---
 	// Esta consulta actualiza el 'precio_venta' de todos los productos involucrados en esta compra.
 	queryUpdatePrecios := `
-        UPDATE producto AS p
+        UPDATE producto_sucursal AS ps
         SET 
             precio = dc.precio_venta
         FROM (
@@ -586,7 +585,7 @@ func (c CompraRepository) ConfirmarRecepcionCompra(ctx context.Context, id *int)
             FROM detalle_compra
             WHERE compra_id = $1
         ) AS dc
-        WHERE p.id = dc.producto_id;
+        WHERE ps.id = dc.producto_id;
     `
 	_, err = tx.Exec(ctx, queryUpdatePrecios, *id)
 	if err != nil {

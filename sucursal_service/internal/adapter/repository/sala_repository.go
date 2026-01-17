@@ -868,7 +868,7 @@ func (s SalaRepository) ObtenerListaSalas(ctx context.Context, filtros map[strin
 	//Si hay nombre en filtros
 	if estado := filtros["estado"]; estado != "" {
 		filters = append(filters, fmt.Sprintf("s.estado = $%d", i))
-		args = append(args, "%"+estado+"%")
+		args = append(args, estado)
 		i++
 	}
 

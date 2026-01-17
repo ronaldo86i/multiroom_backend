@@ -147,7 +147,6 @@ SELECT
                     'nombre',p.nombre,
                     'estado',p.estado,
                     'urlFoto',($1::text || p.id::text || '/' || p.foto),
-                    'precio',p.precio,
                     'creadoEn',p.creado_en,
                     'actualizadoEn',p.actualizado_en,
                     'eliminadoEn',p.eliminado_en
@@ -187,6 +186,7 @@ SELECT
     ai.id,
     ai.tipo_ajuste,
     ai.motivo,
+    ai.fecha,
     json_build_object(
         'id',ua.id,
         'username',ua.username
@@ -209,7 +209,6 @@ SELECT
                     'nombre',p.nombre,
                     'estado',p.estado,
                     'urlFoto',($1::text || p.id::text || '/' || p.foto),
-                    'precio',p.precio,
                     'creadoEn',p.creado_en,
                     'actualizadoEn',p.actualizado_en,
                     'eliminadoEn',p.eliminado_en
@@ -236,7 +235,7 @@ WHERE ai.id = $2
 GROUP BY ai.id, ua.id, s.id
 `
 	var item domain.AjusteInventario
-	err := i.pool.QueryRow(ctx, query, fullHostname, *id).Scan(&item.Id, &item.TipoAjuste, &item.Motivo, &item.Usuario, &item.Sucursal, &item.Detalles)
+	err := i.pool.QueryRow(ctx, query, fullHostname, *id).Scan(&item.Id, &item.TipoAjuste, &item.Motivo, &item.Fecha, &item.Usuario, &item.Sucursal, &item.Detalles)
 	if err != nil {
 		log.Println("Error al consultar:", err)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -267,6 +266,7 @@ SELECT
     ai.id,
     ai.tipo_ajuste,
     ai.motivo,
+    ai.fecha,
     json_build_object(
     	'id',ua.id,
     	'username',ua.username
@@ -294,7 +294,7 @@ LEFT JOIN public.sucursal s on ai.sucursal_id = s.id
 	list := make([]domain.AjusteInventarioInfo, 0)
 	for rows.Next() {
 		var item domain.AjusteInventarioInfo
-		err := rows.Scan(&item.Id, &item.TipoAjuste, &item.Motivo, &item.Usuario, &item.Sucursal)
+		err := rows.Scan(&item.Id, &item.TipoAjuste, &item.Motivo, &item.Fecha, &item.Usuario, &item.Sucursal)
 		if err != nil {
 			log.Println("Error al escanear ajuste_inventario", err)
 			return nil, datatype.NewInternalServerErrorGeneric()
@@ -656,7 +656,6 @@ SELECT
 		'nombre',p.nombre,
 		'estado',p.estado,
 		'urlFoto',($1::text || p.id::text || '/' || p.foto),
-		'precio',p.precio,
 		'creadoEn',p.creado_en,
 		'actualizadoEn',p.actualizado_en,
 		'eliminadoEn',p.eliminado_en

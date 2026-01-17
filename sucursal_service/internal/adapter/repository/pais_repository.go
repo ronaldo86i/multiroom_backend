@@ -35,7 +35,7 @@ func (p PaisRepository) HabilitarPaisById(ctx context.Context, id *int) error {
 		}
 	}()
 
-	query := `UPDATE pais SET estado= 'Activo',actualizado_en=now(),eliminado_en=NULL WHERE id = $1`
+	query := `UPDATE pais SET estado= 'Activo',actualizado_en=now() WHERE id = $1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		return datatype.NewInternalServerErrorGeneric()
@@ -70,7 +70,7 @@ func (p PaisRepository) DeshabilitarPaisById(ctx context.Context, id *int) error
 		}
 	}()
 
-	query := `UPDATE pais SET estado= 'Inactivo',actualizado_en=now(),eliminado_en=now() WHERE id = $1`
+	query := `UPDATE pais SET estado= 'Inactivo',actualizado_en=now() WHERE id = $1`
 	ct, err := tx.Exec(ctx, query, *id)
 	if err != nil {
 		return datatype.NewInternalServerErrorGeneric()
@@ -107,8 +107,8 @@ func (p PaisRepository) RegistrarPais(ctx context.Context, request *domain.PaisR
 	}()
 
 	var paisId int
-	query := `INSERT INTO pais(nombre,archivo,estado) VALUES ($1,$2,'Activo') RETURNING id`
-	err = tx.QueryRow(ctx, query, request.Nombre, nombreArchivo).Scan(&paisId)
+	query := `INSERT INTO pais(nombre,archivo,estado,codigo_local) VALUES ($1,$2,'Activo',$3) RETURNING id`
+	err = tx.QueryRow(ctx, query, request.Nombre, nombreArchivo, request.CodigoLocal).Scan(&paisId)
 	if err != nil {
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
@@ -163,8 +163,8 @@ func (p PaisRepository) ModificarPais(ctx context.Context, id *int, request *dom
 		}
 	}()
 
-	query := `UPDATE pais SET nombre=$1,archivo=$2 WHERE id=$3`
-	ct, err := tx.Exec(ctx, query, request.Nombre, nombreArchivo, *id)
+	query := `UPDATE pais SET nombre=$1,archivo=$2,codigo_local=$3 WHERE id=$4`
+	ct, err := tx.Exec(ctx, query, request.Nombre, nombreArchivo, request.CodigoLocal, *id)
 	if err != nil {
 		log.Println("Error al actualizar país")
 		return datatype.NewInternalServerErrorGeneric()
@@ -223,13 +223,13 @@ func (p PaisRepository) ModificarPais(ctx context.Context, id *int, request *dom
 	return nil
 }
 
-func (p PaisRepository) ObtenerPaisById(ctx context.Context, id *int) (*domain.PaisDetail, error) {
+func (p PaisRepository) ObtenerPaisById(ctx context.Context, id *int) (*domain.Pais, error) {
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/paises/")
 
-	query := `SELECT p.id,p.nombre,p.estado,($1::text || p.id::text || '/' || p.archivo) AS url_foto,p.creado_en,p.actualizado_en,p.eliminado_en FROM pais p WHERE p.id=$2 LIMIT 1`
-	var pais domain.PaisDetail
-	err := p.pool.QueryRow(ctx, query, fullHostname, *id).Scan(&pais.Id, &pais.Nombre, &pais.Estado, &pais.UrlFoto, &pais.CreadoEn, &pais.ActualizadoEn, &pais.EliminadoEn)
+	query := `SELECT p.id,p.nombre,p.estado,($1::text || p.id::text || '/' || p.archivo) AS url_foto,p.creado_en,p.actualizado_en,p.eliminado_en,p.codigo_local FROM pais p WHERE p.id=$2 LIMIT 1`
+	var pais domain.Pais
+	err := p.pool.QueryRow(ctx, query, fullHostname, *id).Scan(&pais.Id, &pais.Nombre, &pais.Estado, &pais.UrlFoto, &pais.CreadoEn, &pais.ActualizadoEn, &pais.EliminadoEn, &pais.CodigoLocal)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, datatype.NewNotFoundError("País no encontrado")
@@ -243,7 +243,7 @@ func (p PaisRepository) ObtenerListaPaises(ctx context.Context, _ map[string]str
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/paises/")
 
-	query := `SELECT p.id,p.nombre,p.estado,($1::text || p.id::text || '/' || p.archivo) AS url_foto,p.creado_en FROM pais p`
+	query := `SELECT p.id,p.nombre,p.estado,($1::text || p.id::text || '/' || p.archivo) AS url_foto,p.creado_en,p.codigo_local FROM pais p`
 	rows, err := p.pool.Query(ctx, query, fullHostname)
 	if err != nil {
 		return nil, datatype.NewInternalServerErrorGeneric()
@@ -252,7 +252,7 @@ func (p PaisRepository) ObtenerListaPaises(ctx context.Context, _ map[string]str
 	list := make([]domain.PaisInfo, 0)
 	for rows.Next() {
 		var item domain.PaisInfo
-		err = rows.Scan(&item.Id, &item.Nombre, &item.Estado, &item.UrlFoto, &item.CreadoEn)
+		err = rows.Scan(&item.Id, &item.Nombre, &item.Estado, &item.UrlFoto, &item.CreadoEn, &item.CodigoLocal)
 		if err != nil {
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}

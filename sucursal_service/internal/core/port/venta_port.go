@@ -13,6 +13,7 @@ type VentaRepository interface {
 	RegistrarPagoVenta(ctx context.Context, ventaId *int, request *domain.RegistrarPagosRequest) (*[]int, error)
 	ObtenerVenta(ctx context.Context, id *int) (*domain.Venta, error)
 	ListarVentas(ctx context.Context, filtros map[string]string) (*[]domain.VentaInfo, error)
+	ListarProductosVentas(ctx context.Context, filtros map[string]string) (*[]domain.ProductoVentaStat, error)
 }
 
 type VentaService interface {
@@ -21,6 +22,7 @@ type VentaService interface {
 	RegistrarPagoVenta(ctx context.Context, ventaId *int, request *domain.RegistrarPagosRequest) (*[]int, error)
 	ObtenerVenta(ctx context.Context, id *int) (*domain.Venta, error)
 	ListarVentas(ctx context.Context, filtros map[string]string) (*[]domain.VentaInfo, error)
+	ListarProductosVentas(ctx context.Context, filtros map[string]string) (*[]domain.ProductoVentaStat, error)
 }
 
 type VentaHandler interface {
@@ -29,4 +31,5 @@ type VentaHandler interface {
 	RegistrarPagoVenta(c *fiber.Ctx) error
 	ObtenerVenta(c *fiber.Ctx) error
 	ListarVentas(c *fiber.Ctx) error
+	ListarProductosVentas(c *fiber.Ctx) error
 }

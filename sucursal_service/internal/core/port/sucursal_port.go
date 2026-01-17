@@ -9,7 +9,7 @@ import (
 type SucursalRepository interface {
 	RegistrarSucursal(ctx context.Context, request *domain.SucursalRequest) (*int, error)
 	ModificarSucursal(ctx context.Context, id *int, request *domain.SucursalRequest) error
-	ObtenerSucursalById(ctx context.Context, id *int) (*domain.SucursalDetail, error)
+	ObtenerSucursalById(ctx context.Context, id *int) (*domain.Sucursal, error)
 	ObtenerListaSucursales(ctx context.Context, filtros map[string]string) (*[]domain.SucursalInfo, error)
 	HabilitarSucursal(ctx context.Context, id *int) error
 	DeshabilitarSucursal(ctx context.Context, id *int) error
@@ -18,7 +18,7 @@ type SucursalRepository interface {
 type SucursalService interface {
 	RegistrarSucursal(ctx context.Context, request *domain.SucursalRequest) (*int, error)
 	ModificarSucursal(ctx context.Context, id *int, request *domain.SucursalRequest) error
-	ObtenerSucursalById(ctx context.Context, id *int) (*domain.SucursalDetail, error)
+	ObtenerSucursalById(ctx context.Context, id *int) (*domain.Sucursal, error)
 	ObtenerListaSucursales(ctx context.Context, filtros map[string]string) (*[]domain.SucursalInfo, error)
 	HabilitarSucursal(ctx context.Context, id *int) error
 	DeshabilitarSucursal(ctx context.Context, id *int) error

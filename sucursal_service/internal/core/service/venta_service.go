@@ -10,6 +10,10 @@ type VentaService struct {
 	ventaService port.VentaService
 }
 
+func (v VentaService) ListarProductosVentas(ctx context.Context, filtros map[string]string) (*[]domain.ProductoVentaStat, error) {
+	return v.ventaService.ListarProductosVentas(ctx, filtros)
+}
+
 func (v VentaService) RegistrarVenta(ctx context.Context, request *domain.VentaRequest) (*int, error) {
 	return v.ventaService.RegistrarVenta(ctx, request)
 }

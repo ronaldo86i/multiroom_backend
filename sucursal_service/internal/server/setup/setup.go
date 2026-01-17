@@ -17,47 +17,52 @@ import (
 )
 
 type Repository struct {
-	Pais       port.PaisRepository
-	Sucursal   port.SucursalRepository
-	Sala       port.SalaRepository
-	AppVersion port.AppVersionRepository
-	Proveedor  port.ProveedorRepository
-	Producto   port.ProductoRepository
-	Ubicacion  port.UbicacionRepository
-	Compra     port.CompraRepository
-	Inventario port.InventarioRepository
-	Venta      port.VentaRepository
-	MetodoPago port.MetodoPagoRepository
+	Pais              port.PaisRepository
+	Sucursal          port.SucursalRepository
+	Sala              port.SalaRepository
+	AppVersion        port.AppVersionRepository
+	Proveedor         port.ProveedorRepository
+	Producto          port.ProductoRepository
+	Ubicacion         port.UbicacionRepository
+	Compra            port.CompraRepository
+	Inventario        port.InventarioRepository
+	Venta             port.VentaRepository
+	MetodoPago        port.MetodoPagoRepository
+	ProductoCategoria port.ProductoCategoriaRepository
 }
 
 type Service struct {
-	Pais       port.PaisService
-	Sucursal   port.SucursalService
-	Sala       port.SalaService
-	RabbitMQ   port.RabbitMQService
-	AppVersion port.AppVersionService
-	Proveedor  port.ProveedorService
-	Producto   port.ProductoService
-	Ubicacion  port.UbicacionService
-	Compra     port.CompraService
-	Inventario port.InventarioService
-	Venta      port.VentaService
-	MetodoPago port.MetodoPagoService
+	Pais              port.PaisService
+	Sucursal          port.SucursalService
+	Sala              port.SalaService
+	RabbitMQ          port.RabbitMQService
+	AppVersion        port.AppVersionService
+	Proveedor         port.ProveedorService
+	Producto          port.ProductoService
+	Ubicacion         port.UbicacionService
+	Compra            port.CompraService
+	Inventario        port.InventarioService
+	Venta             port.VentaService
+	MetodoPago        port.MetodoPagoService
+	ProductoCategoria port.ProductoCategoriaService
+	Reporte           port.ReporteService
 }
 
 type Handler struct {
-	Pais       port.PaisHandler
-	Sucursal   port.SucursalHandler
-	Sala       port.SalaHandler
-	SalaWS     port.SalaHandlerWS
-	AppVersion port.AppVersionHandler
-	Proveedor  port.ProveedorHandler
-	Producto   port.ProductoHandler
-	Ubicacion  port.UbicacionHandler
-	Compra     port.CompraHandler
-	Inventario port.InventarioHandler
-	Venta      port.VentaHandler
-	MetodoPago port.MetodoPagoHandler
+	Pais              port.PaisHandler
+	Sucursal          port.SucursalHandler
+	Sala              port.SalaHandler
+	SalaWS            port.SalaHandlerWS
+	AppVersion        port.AppVersionHandler
+	Proveedor         port.ProveedorHandler
+	Producto          port.ProductoHandler
+	Ubicacion         port.UbicacionHandler
+	Compra            port.CompraHandler
+	Inventario        port.InventarioHandler
+	Venta             port.VentaHandler
+	MetodoPago        port.MetodoPagoHandler
+	ProductoCategoria port.ProductoCategoriaHandler
+	Reporte           port.ReporteHandler
 }
 
 type Dependencies struct {
@@ -118,6 +123,7 @@ func Init() {
 		repositories.Inventario = repository.NewInventarioRepository(pool)
 		repositories.Venta = repository.NewVentaRepository(pool)
 		repositories.MetodoPago = repository.NewMetodoPagoRepository(pool)
+		repositories.ProductoCategoria = repository.NewProductoCategoriaRepository(pool)
 		// Services
 		services.RabbitMQ = service.NewRabbitMQService(os.Getenv("RABBITMQ_URL"))
 		services.Pais = service.NewPaisService(repositories.Pais)
@@ -131,6 +137,8 @@ func Init() {
 		services.Inventario = service.NewInventarioService(repositories.Inventario)
 		services.Venta = service.NewVentaService(repositories.Venta)
 		services.MetodoPago = service.NewMetodoPagoService(repositories.MetodoPago)
+		services.ProductoCategoria = service.NewProductoCategoriaService(repositories.ProductoCategoria)
+		services.Reporte = service.NewReporteService(repositories.Venta)
 		// Handlers
 		handlers.Pais = httpHandler.NewPaisHandler(services.Pais)
 		handlers.Sucursal = httpHandler.NewSucursalHandler(services.Sucursal)
@@ -144,6 +152,8 @@ func Init() {
 		handlers.Inventario = httpHandler.NewInventarioHandler(services.Inventario)
 		handlers.Venta = httpHandler.NewVentaHandler(services.Venta)
 		handlers.MetodoPago = httpHandler.NewMetodoPagoHandler(services.MetodoPago)
+		handlers.ProductoCategoria = httpHandler.NewProductoCategoriaHandler(services.ProductoCategoria)
+		handlers.Reporte = httpHandler.NewReporteHandler(services.Reporte)
 		instance = d
 	})
 }

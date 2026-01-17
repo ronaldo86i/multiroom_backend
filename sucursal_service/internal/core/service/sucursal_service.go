@@ -18,7 +18,7 @@ func (s SucursalService) ModificarSucursal(ctx context.Context, id *int, request
 	return s.sucursalRepository.ModificarSucursal(ctx, id, request)
 }
 
-func (s SucursalService) ObtenerSucursalById(ctx context.Context, id *int) (*domain.SucursalDetail, error) {
+func (s SucursalService) ObtenerSucursalById(ctx context.Context, id *int) (*domain.Sucursal, error) {
 	return s.sucursalRepository.ObtenerSucursalById(ctx, id)
 }
 

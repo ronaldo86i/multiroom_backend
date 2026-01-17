@@ -35,7 +35,7 @@ func (p PaisService) ModificarPais(ctx context.Context, id *int, request *domain
 	return p.paisRepository.ModificarPais(ctx, id, request, fileHeader)
 }
 
-func (p PaisService) ObtenerPaisById(ctx context.Context, id *int) (*domain.PaisDetail, error) {
+func (p PaisService) ObtenerPaisById(ctx context.Context, id *int) (*domain.Pais, error) {
 	return p.paisRepository.ObtenerPaisById(ctx, id)
 }
 

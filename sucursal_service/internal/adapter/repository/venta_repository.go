@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"multiroom/sucursal-service/internal/core/domain"
 	"multiroom/sucursal-service/internal/core/domain/datatype"
 	"multiroom/sucursal-service/internal/core/port"
@@ -22,11 +21,303 @@ type VentaRepository struct {
 	pool *pgxpool.Pool
 }
 
+func (v VentaRepository) ListarProductosVentas(ctx context.Context, filtros map[string]string) (*[]domain.ProductoVentaStat, error) {
+	fullHostname := ctx.Value("fullHostname").(string)
+	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/productos/")
+
+	var filters []string
+	// $1 es el hostname para la foto
+	var args = []interface{}{fullHostname}
+	var j = 2
+
+	// 1. Filtro Sucursal
+	if sucursalIdStr := filtros["sucursalId"]; sucursalIdStr != "" {
+		sucursalId, err := strconv.Atoi(sucursalIdStr)
+		if err != nil {
+			log.Println("Error al convertir sucursalId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de sucursalId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("s1.id = $%d", j))
+		args = append(args, sucursalId)
+		j++
+	}
+
+	// 2. Filtro Fecha Inicio (v.creado_en >= fecha)
+	if fechaInicio := filtros["fechaInicio"]; fechaInicio != "" {
+		// Se asume formato 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM:SS'
+		filters = append(filters, fmt.Sprintf("v.creado_en >= $%d", j))
+		args = append(args, fechaInicio)
+		j++
+	}
+
+	// 3. Filtro Fecha Fin (v.creado_en <= fecha)
+	if fechaFin := filtros["fechaFin"]; fechaFin != "" {
+		// Se asume formato 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM:SS'
+		// Nota: Si solo envías fecha, considera que '2023-01-01' es las 00:00.
+		// Para incluir el día suele usarse la fecha siguiente o agregar hora 23:59:59 desde el frontend.
+		filters = append(filters, fmt.Sprintf("v.creado_en <= $%d", j))
+		args = append(args, fechaFin)
+		j++
+	}
+
+	var list = make([]domain.ProductoVentaStat, 0)
+
+	query := `
+       SELECT
+          json_build_object(
+             'id', p.id,
+             'nombre', p.nombre,
+             'estado', p.estado,
+             'urlFoto', ($1::text || p.id::text || '/' || p.foto),
+             'precio', p.precio,
+             'esInventariable', p.es_inventariable,
+             'creadoEn', p.creado_en,
+             'actualizadoEn', p.actualizado_en,
+             'eliminadoEn', p.eliminado_en
+          ) as producto_info,
+          -- (Cantidad * Precio) - DescuentoLinea
+          COALESCE(SUM(dv.cantidad * dv.precio_venta - dv.descuento), 0) as total_ventas,
+          COALESCE(SUM(dv.cantidad), 0) as cantidad_ventas
+       FROM producto p
+       LEFT JOIN detalle_venta dv ON p.id = dv.producto_id
+       LEFT JOIN venta v ON dv.venta_id = v.id AND v.estado = 'Completado'
+       LEFT JOIN sucursal s1 ON v.sucursal_id = s1.id 
+    `
+
+	// 4. Aplicar Filtros (WHERE)
+	if len(filters) > 0 {
+		query += " WHERE " + strings.Join(filters, " AND ")
+	}
+
+	// 5. Agrupación y Ordenamiento
+	query += " GROUP BY p.id ORDER BY total_ventas DESC"
+
+	// 6. Ejecutar Query
+	rows, err := v.pool.Query(ctx, query, args...)
+	if err != nil {
+		log.Println("Error al listar estadísticas de productos:", err)
+		return nil, datatype.NewInternalServerErrorGeneric()
+	}
+	defer rows.Close()
+
+	// 7. Escanear Resultados
+	for rows.Next() {
+		var item domain.ProductoVentaStat
+		err := rows.Scan(&item.Producto, &item.TotalVentas, &item.CantidadVentas)
+		if err != nil {
+			log.Println("Error al escanear:", err)
+			return nil, datatype.NewInternalServerErrorGeneric()
+		}
+
+		list = append(list, item)
+	}
+
+	if rows.Err() != nil {
+		log.Println("Error en iteración de rows:", rows.Err())
+		return nil, datatype.NewInternalServerErrorGeneric()
+	}
+
+	return &list, nil
+}
+
+func (v VentaRepository) ListarVentas(ctx context.Context, filtros map[string]string) (*[]domain.VentaInfo, error) {
+	var filters []string
+	var args []interface{}
+	var j = 1
+
+	if usuarioIdStr := filtros["usuarioId"]; usuarioIdStr != "" {
+		usuarioId, err := strconv.Atoi(usuarioIdStr)
+		if err != nil {
+			log.Println("Error al convertir usuarioId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de usuarioId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("v.usuario_id = $%d", j))
+		args = append(args, usuarioId)
+		j++
+	}
+
+	if sucursalIdStr := filtros["sucursalId"]; sucursalIdStr != "" {
+		sucursalId, err := strconv.Atoi(sucursalIdStr)
+		if err != nil {
+			log.Println("Error al convertir sucursalId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de sucursalId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("s1.id = $%d", j))
+		args = append(args, sucursalId)
+		j++
+	}
+
+	// 2. Filtro Fecha Inicio (v.creado_en >= fecha)
+	if fechaInicio := filtros["fechaInicio"]; fechaInicio != "" {
+		// Se asume formato 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM:SS'
+		filters = append(filters, fmt.Sprintf("v.creado_en >= $%d", j))
+		args = append(args, fechaInicio)
+		j++
+	}
+
+	// 3. Filtro Fecha Fin (v.creado_en <= fecha)
+	if fechaFin := filtros["fechaFin"]; fechaFin != "" {
+		// Se asume formato 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM:SS'
+		filters = append(filters, fmt.Sprintf("v.creado_en <= $%d", j))
+		args = append(args, fechaFin)
+		j++
+	}
+
+	if salaIdStr := filtros["salaId"]; salaIdStr != "" {
+		salaId, err := strconv.Atoi(salaIdStr)
+		if err != nil {
+			log.Println("Error al convertir salaId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de salaId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("s2.id = $%d", j))
+		args = append(args, salaId)
+		j++
+	}
+
+	if usoSalaIdStr := filtros["usoSalaId"]; usoSalaIdStr != "" {
+		usoSalaId, err := strconv.Atoi(usoSalaIdStr)
+		if err != nil {
+			log.Println("Error al convertir usoSalaId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de usoSalaId no es válido")
+		}
+		filters = append(filters, fmt.Sprintf("us.id = $%d", j))
+		args = append(args, usoSalaId)
+		j++
+	}
+
+	if estado := filtros["estado"]; estado != "" {
+		filters = append(filters, fmt.Sprintf("v.estado = $%d", j))
+		args = append(args, estado)
+		j++
+	}
+
+	// Requiere hacer JOIN con detalle_venta (agregado en la query abajo)
+	if productoIdStr := filtros["productoId"]; productoIdStr != "" {
+		productoId, err := strconv.Atoi(productoIdStr)
+		if err != nil {
+			log.Println("Error al convertir productoId a int:", err)
+			return nil, datatype.NewBadRequestError("El valor de productoId no es válido")
+		}
+		// Usamos el alias 'dv' que definiremos en el JOIN
+		filters = append(filters, fmt.Sprintf("dv.producto_id = $%d", j))
+		args = append(args, productoId)
+		j++
+	}
+
+	if fechaInicio := filtros["fechaInicio"]; fechaInicio != "" {
+		filters = append(filters, fmt.Sprintf("v.creado_en >= $%d", j))
+		args = append(args, fechaInicio)
+		j++
+	}
+
+	if fechaFin := filtros["fechaFin"]; fechaFin != "" {
+		filters = append(filters, fmt.Sprintf("v.creado_en <= $%d", j))
+		args = append(args, fechaFin)
+		j++
+	}
+
+	query := `
+    SELECT 
+       v.id,
+       v.codigo_venta,
+       v.total,
+       v.estado,
+       v.creado_en,
+       v.actualizado_en,
+       v.costo_tiempo_venta,
+       v.descuento_general,
+       v.observacion,
+       json_build_object(
+          'id',ua.id,
+          'username',ua.username
+       ) AS usuario,
+       json_build_object(
+          'id', c.id,
+          'nombres', c.nombres,
+          'apellidos', c.apellidos,
+          'codigoPais', c.codigo_pais,
+          'celular', c.celular,
+          'fechaNacimiento', c.fecha_nacimiento,
+          'estado', c.estado,
+          'creadoEn', c.creado_en
+       ) AS cliente,
+       jsonb_build_object(
+          'id', s1.id,
+          'nombre', s1.nombre,
+          'estado', s1.estado,
+          'creadoEn', s1.creado_en
+       ) AS sucursal,
+       jsonb_build_object(
+          'id',s2.id,
+          'nombre',s2.nombre,
+          'estado',s2.estado,
+          'creadoEn',s2.creado_en,
+          'actualizadoEn',s2.actualizado_en,
+          'eliminadoEn',s2.eliminado_en,
+          'dispositivo',jsonb_build_object(
+             'id', d.id,
+             'dispositivoId', d.dispositivo_id,
+             'nombre', d.nombre,
+             'estado', d.estado,
+             'creadoEn', d.creado_en,
+             'usuario', COALESCE(
+             jsonb_build_object(
+                'id', u.id,
+                'username', u.username
+             ), '{}'::jsonb)
+          )
+       ) AS sala
+    FROM  venta v
+    LEFT JOIN public.usuario_admin ua on v.usuario_id = ua.id
+    LEFT JOIN public.cliente c on v.cliente_id = c.id
+    LEFT JOIN public.sucursal s1 on v.sucursal_id = s1.id
+    LEFT JOIN public.sala s2 on v.sala_id = s2.id
+    LEFT JOIN public.dispositivo d on s2.dispositivo_id = d.id
+    LEFT JOIN public.usuario u on d.usuario_id = u.id
+    LEFT JOIN public.uso_sala us on v.uso_sala_id = us.id
+    LEFT JOIN public.detalle_venta dv on v.id = dv.venta_id
+    `
+
+	if len(filters) > 0 {
+		query += " WHERE " + strings.Join(filters, " AND ")
+	}
+
+	// El GROUP BY asegura que si una venta tiene el mismo producto varias veces
+	// o si el JOIN duplica filas, solo obtengamos una fila por venta.
+	query += `
+    GROUP BY v.id, c.id, d.id, ua.id, s1.id, s2.id, u.id
+    ORDER BY v.id DESC
+    `
+	// Nota: Cambié ORDER BY a DESC usualmente se quieren ver las ventas recientes primero,
+	// puedes dejarlo sin DESC si prefieres orden ascendente.
+
+	rows, err := v.pool.Query(ctx, query, args...)
+	if err != nil {
+		log.Println("Error ejecutando query ListarVentas:", err)
+		return nil, datatype.NewInternalServerErrorGeneric()
+	}
+	defer rows.Close()
+
+	list := make([]domain.VentaInfo, 0)
+	for rows.Next() {
+		var item domain.VentaInfo
+		err := rows.Scan(&item.Id, &item.CodigoVenta, &item.Total, &item.Estado, &item.CreadoEn, &item.ActualizadoEn, &item.CostoTiempoVenta, &item.DescuentoGeneral, &item.Observacion, &item.Usuario, &item.Cliente, &item.Sucursal, &item.Sala)
+		if err != nil {
+			log.Println("Error al obtener lista de venta:", err)
+			return nil, datatype.NewInternalServerErrorGeneric()
+		}
+		list = append(list, item)
+	}
+
+	return &list, nil
+}
+
 func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.VentaRequest) (*int, error) {
 	type stockDisponible struct {
 		UbicacionId int
 		Stock       int
 	}
+
 	// 1. Iniciar transacción
 	tx, err := v.pool.Begin(ctx)
 	if err != nil {
@@ -42,25 +333,32 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 		}
 	}()
 
-	// 2. Obtener SucursalId (basado en la SalaId del request)
-	var sucursalId int
-	querySucursal := `SELECT sucursal_id FROM sala WHERE id = $1`
-	err = tx.QueryRow(ctx, querySucursal, request.SalaId).Scan(&sucursalId)
+	if request.SucursalId <= 0 {
+		return nil, datatype.NewBadRequestError("El ID de la sucursal es obligatorio.")
+	}
+
+	var sucursalExiste bool
+	queryValidaSucursal := `SELECT EXISTS(SELECT 1 FROM sucursal WHERE id = $1 AND estado = 'Activo')`
+	err = tx.QueryRow(ctx, queryValidaSucursal, request.SucursalId).Scan(&sucursalExiste)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, datatype.NewBadRequestError("La sala (POS) seleccionada no existe.")
-		}
-		log.Println("Error al buscar sucursalId por salaId:", err)
+		log.Println("Error al validar sucursal:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
+
+	if !sucursalExiste {
+		return nil, datatype.NewBadRequestError(fmt.Sprintf("La sucursal con id %d no existe o se encuentra inactiva.", request.SucursalId))
+	}
+	// Actualizar uso de sala (Costo Tiempo) - Solo si aplica
 	if request.UsoSalaId != nil {
+		// Validamos que si hay UsoSala, la SalaId no debería ser nil (lógica de negocio),
+		// pero aquí confiamos en el request o la BD lanzará error de FK si está mal.
+
 		queryUsoSala := `
             UPDATE uso_sala 
-            SET costo_tiempo=$1, 
+            SET costo_tiempo = costo_tiempo + $1, 
                 actualizado_en = NOW() 
             WHERE id = $2 
-              AND estado IN ('En uso', 'Pausado')
-        `
+              AND estado IN ('En uso', 'Pausado')`
 
 		ct, err := tx.Exec(ctx, queryUsoSala, request.CostoTiempo, *request.UsoSalaId)
 		if err != nil {
@@ -68,16 +366,16 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
 		if ct.RowsAffected() == 0 {
-			// Si el uso_sala existe pero no está 'En uso'/'Pausado', se rechaza la venta.
-			return nil, datatype.NewBadRequestError("La sesión de uso de sala no está activa y no puede registrar más ventas.")
+			return nil, datatype.NewBadRequestError("La sesión de uso de sala no está activa.")
 		}
 	}
-	// (Ya no es necesario obtener el 'codigoVenta' aquí, se hace en el INSERT)
-	var totalVenta float64 = 0
-	var detallesParaGuardar [][]interface{} // Para el CopyFrom
 
-	// Queries que se usarán en el bucle
-	queryGetPrecio := `SELECT precio FROM producto WHERE id = $1`
+	var totalVenta float64 = 0
+	var detallesParaGuardar [][]interface{}
+
+	queryGetPrecio := `SELECT precio FROM producto_sucursal WHERE producto_id = $1 AND  sucursal_id = $2`
+
+	// NOTA: Aquí usamos $2 que será request.SucursalId
 	queryFindStock := `
         SELECT i.stock, i.ubicacion_id
         FROM inventario i
@@ -88,16 +386,21 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
           AND u.estado = 'Activo'
         ORDER BY u.prioridad_venta
         FOR UPDATE OF i`
+
 	queryRestaStock := `UPDATE inventario SET stock = stock - $1 WHERE producto_id = $2 AND ubicacion_id = $3`
 
-	// 4. Bucle de Lógica de Inventario
+	// Bucle de Detalles
 	for _, detalleReq := range request.Detalles {
 		if detalleReq.Cantidad <= 0 {
-			return nil, datatype.NewBadRequestError("Cantidad de producto debe ser mayor a cero")
+			return nil, datatype.NewBadRequestError("Cantidad debe ser mayor a cero")
+		}
+
+		if detalleReq.Descuento < 0 {
+			return nil, datatype.NewBadRequestError("El descuento por producto no puede ser negativo")
 		}
 
 		var precioVenta float64
-		err = tx.QueryRow(ctx, queryGetPrecio, detalleReq.ProductoId).Scan(&precioVenta)
+		err = tx.QueryRow(ctx, queryGetPrecio, detalleReq.ProductoId, request.SucursalId).Scan(&precioVenta)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, datatype.NewBadRequestError(fmt.Sprintf("Producto ID %d no encontrado.", detalleReq.ProductoId))
@@ -105,7 +408,18 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
 
-		rows, err := tx.Query(ctx, queryFindStock, detalleReq.ProductoId, sucursalId)
+		subtotalBrutoLinea := precioVenta * float64(detalleReq.Cantidad)
+		if detalleReq.Descuento > subtotalBrutoLinea {
+			return nil, datatype.NewBadRequestError(fmt.Sprintf("El descuento (%.2f) no puede ser mayor al precio total del producto (%.2f)", detalleReq.Descuento, subtotalBrutoLinea))
+		}
+
+		descuentoUnitario := 0.0
+		if detalleReq.Cantidad > 0 {
+			descuentoUnitario = detalleReq.Descuento / float64(detalleReq.Cantidad)
+		}
+
+		// Buscamos Stock usando request.SucursalId directamente
+		rows, err := tx.Query(ctx, queryFindStock, detalleReq.ProductoId, request.SucursalId)
 		if err != nil {
 			log.Println("Error al buscar stock:", err)
 			rows.Close()
@@ -128,11 +442,18 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 		rows.Close()
 
 		if stockTotalVendible < int(detalleReq.Cantidad) {
-			return nil, datatype.NewBadRequestError(fmt.Sprintf("Stock insuficiente para producto ID %d. Solicitado: %d, Disponible: %d", detalleReq.ProductoId, detalleReq.Cantidad, stockTotalVendible))
+			var productoNombre string
+			queryProducto := `SELECT nombre FROM producto WHERE id = $1 LIMIT 1`
+
+			err := tx.QueryRow(ctx, queryProducto, detalleReq.ProductoId).Scan(&productoNombre)
+			if err != nil {
+				return nil, datatype.NewInternalServerErrorGeneric()
+			}
+			return nil, datatype.NewBadRequestError(fmt.Sprintf("Stock insuficiente para producto %s. Solicitado: %d, Disponible: %d", productoNombre, detalleReq.Cantidad, stockTotalVendible))
 		}
 
+		totalVenta += subtotalBrutoLinea - detalleReq.Descuento
 		cantidadARestar := int(detalleReq.Cantidad)
-		totalVenta += precioVenta * float64(detalleReq.Cantidad)
 
 		for _, s := range stockDisponibleList {
 			if cantidadARestar == 0 {
@@ -153,32 +474,52 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 				return nil, datatype.NewInternalServerErrorGeneric()
 			}
 
+			descuentoFraccion := descuentoUnitario * float64(cantidadDescontada)
+
 			detallesParaGuardar = append(detallesParaGuardar, []interface{}{
 				nil,
 				detalleReq.ProductoId,
 				s.UbicacionId,
 				cantidadDescontada,
 				precioVenta,
+				descuentoFraccion,
 			})
 		}
 	}
 
+	// Calcular Total Final
 	totalVenta += request.CostoTiempo
-	// 5. Insertar el Encabezado (venta)
+
+	if request.DescuentoGeneral < 0 {
+		return nil, datatype.NewBadRequestError("El descuento general no puede ser negativo")
+	}
+	if request.DescuentoGeneral > totalVenta {
+		return nil, datatype.NewBadRequestError("El descuento general no puede ser mayor al total de la venta")
+	}
+
+	totalVenta -= request.DescuentoGeneral
+
+	// Insertar el Encabezado (venta)
 	var ventaId int
-	// CONSULTA CORREGIDA
 	queryVenta := `
-        INSERT INTO venta (codigo_venta, sucursal_id, sala_id, uso_sala_id, usuario_id, cliente_id, total, estado, creado_en)
-        VALUES (nextval('seq_codigo_venta'), $1, $2, $3, $4, $5, $6, 'Pendiente', NOW())
+        INSERT INTO venta (
+            codigo_venta, sucursal_id, sala_id, uso_sala_id, usuario_id, cliente_id, 
+            total, descuento_general, costo_tiempo_venta,observacion, estado, creado_en
+        )
+        VALUES (nextval('seq_codigo_venta'), $1, $2, $3, $4, $5, $6, $7, $8,$9,'Pendiente', NOW())
         RETURNING id`
 
+	// CAMBIO IMPORTANTE: Pasamos request.SucursalId y request.SalaId directamente
 	err = tx.QueryRow(ctx, queryVenta,
-		sucursalId,        // $1
-		request.SalaId,    // $2
-		request.UsoSalaId, // $3
-		request.UsuarioId, // $4
-		request.ClienteId, // $5
-		totalVenta,        // $6
+		request.SucursalId,       // $1
+		request.SalaId,           // $2 (Puede ser nil, pgx insertará NULL)
+		request.UsoSalaId,        // $3
+		request.UsuarioId,        // $4
+		request.ClienteId,        // $5
+		totalVenta,               // $6
+		request.DescuentoGeneral, // $7
+		request.CostoTiempo,      // $8
+		request.Observacion,      // $9
 	).Scan(&ventaId)
 
 	if err != nil {
@@ -186,11 +527,13 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 
-	// 6. Insertar los Detalles (CopyFrom)
+	// Insertar los Detalles
 	for i := range detallesParaGuardar {
 		detallesParaGuardar[i][0] = ventaId
 	}
-	columnasDetalle := []string{"venta_id", "producto_id", "ubicacion_id", "cantidad", "precio_venta"}
+
+	columnasDetalle := []string{"venta_id", "producto_id", "ubicacion_id", "cantidad", "precio_venta", "descuento"}
+
 	_, err = tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"detalle_venta"},
@@ -198,19 +541,18 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 		pgx.CopyFromRows(detallesParaGuardar),
 	)
 	if err != nil {
-		log.Println("Error durante la inserción masiva de detalles de venta:", err)
+		log.Println("Error durante la inserción masiva de detalles:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 
-	// 7. Commit
+	// Commit
 	err = tx.Commit(ctx)
 	if err != nil {
-		log.Println("Error al confirmar transacción de venta:", err)
+		log.Println("Error al confirmar transacción:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 	committed = true
 
-	// Firma de retorno CORREGIDA
 	return &ventaId, nil
 }
 
@@ -236,26 +578,51 @@ func (v VentaRepository) AnularVentaById(ctx context.Context, id *int) error {
 		}
 	}()
 
-	// 2. Verificar estado de la venta (y bloquear la fila)
+	// 2. Obtener datos de la venta (Estado, UsoSala y CostoTiempo)
 	var estadoActual string
-	queryEstado := `SELECT estado FROM venta WHERE id = $1 FOR UPDATE`
-	err = tx.QueryRow(ctx, queryEstado, *id).Scan(&estadoActual)
+	var usoSalaId *int64
+	var costoTiempoVenta float64
+
+	// MODIFICADO: Ahora traemos también el uso_sala_id y el costo_tiempo_venta
+	queryDatosVenta := `
+        SELECT estado, uso_sala_id, costo_tiempo_venta 
+        FROM venta 
+        WHERE id = $1 
+        FOR UPDATE`
+
+	err = tx.QueryRow(ctx, queryDatosVenta, *id).Scan(&estadoActual, &usoSalaId, &costoTiempoVenta)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return datatype.NewNotFoundError("Venta no encontrada")
 		}
-		log.Println("Error al obtener estado de la venta:", err)
+		log.Println("Error al obtener datos de la venta:", err)
 		return datatype.NewInternalServerErrorGeneric()
 	}
-	if estadoActual == "Completado" {
-		return datatype.NewBadRequestError("Esta venta ya fue completado.")
-	}
+
 	if estadoActual == "Anulada" {
 		return datatype.NewBadRequestError("Esta venta ya fue anulada anteriormente.")
 	}
 
-	// 3. Obtener los detalles de la venta
+	// --- NUEVA LÓGICA: REVERTIR COSTO DE TIEMPO EN USO_SALA ---
+	// Si la venta estaba ligada a una sala y tenía un costo de tiempo asociado, lo restamos.
+	if usoSalaId != nil && costoTiempoVenta > 0 {
+		queryRevertirCosto := `
+            UPDATE uso_sala 
+            SET 
+                costo_tiempo = costo_tiempo - $1, 
+                actualizado_en = NOW() 
+            WHERE id = $2`
+
+		_, err = tx.Exec(ctx, queryRevertirCosto, costoTiempoVenta, *usoSalaId)
+		if err != nil {
+			log.Println("Error al revertir el costo de tiempo en uso_sala:", err)
+			return datatype.NewInternalServerErrorGeneric()
+		}
+	}
+	// -----------------------------------------------------------
+
+	// 3. Obtener los detalles de la venta (Productos)
 	queryDetalles := `
         SELECT producto_id, ubicacion_id, cantidad 
         FROM detalle_venta 
@@ -279,8 +646,6 @@ func (v VentaRepository) AnularVentaById(ctx context.Context, id *int) error {
 	rows.Close()
 
 	// 4. REVERTIR EL INVENTARIO (Devolver el stock)
-	// (Solo si la venta no estaba 'Pendiente'. Si estaba 'Pendiente', el stock ya se descontó)
-
 	querySumaInventario := `
        INSERT INTO inventario (producto_id, ubicacion_id, stock)
        VALUES ($1, $2, $3)
@@ -288,20 +653,20 @@ func (v VentaRepository) AnularVentaById(ctx context.Context, id *int) error {
        DO UPDATE SET
           stock = inventario.stock + EXCLUDED.stock;
     `
-	// (Si la venta fue 'Completado' o 'Pendiente', el stock ya se descontó, así que lo devolvemos)
 	for _, d := range detalles {
 		if d.Cantidad > 0 {
-			_, err = tx.Exec(ctx, querySumaInventario, d.ProductoId, d.UbicacionId, d.Cantidad)
-			if err != nil {
-				log.Println("Error al devolver stock (UPSERT):", err)
-				return datatype.NewInternalServerErrorGeneric()
+			// Nota: Si el producto no es inventariable (ubicacion_id es NULL), esto fallaría.
+			// Deberías validar que d.UbicacionId > 0 o manejar el NULL en la query.
+			// Asumiendo que detalle_venta guarda NULL en ubicacion_id para servicios:
+			if d.UbicacionId > 0 {
+				_, err = tx.Exec(ctx, querySumaInventario, d.ProductoId, d.UbicacionId, d.Cantidad)
+				if err != nil {
+					log.Println("Error al devolver stock (UPSERT):", err)
+					return datatype.NewInternalServerErrorGeneric()
+				}
 			}
 		}
 	}
-
-	// (Opcional: ¿Qué hacer con los pagos? Si la venta estaba 'Completado',
-	// deberías registrar una devolución de dinero, pero eso es una lógica más compleja
-	// Por ahora, solo anulamos la venta).
 
 	// 5. Actualizar estado de la Venta
 	queryUpdateVenta := `UPDATE venta SET estado = 'Anulada', actualizado_en = NOW() WHERE id = $1`
@@ -323,6 +688,14 @@ func (v VentaRepository) AnularVentaById(ctx context.Context, id *int) error {
 }
 
 func (v VentaRepository) RegistrarPagoVenta(ctx context.Context, ventaId *int, request *domain.RegistrarPagosRequest) (*[]int, error) {
+	var pagosValidos []domain.PagoRequest
+	for _, pago := range request.Pagos {
+		if pago.Monto > 0 {
+			pagosValidos = append(pagosValidos, pago)
+		}
+	}
+	// Reemplazamos la lista original con la lista limpia
+	request.Pagos = pagosValidos
 
 	// 0. Validar el input
 	if len(request.Pagos) == 0 {
@@ -373,9 +746,9 @@ func (v VentaRepository) RegistrarPagoVenta(ctx context.Context, ventaId *int, r
 	}
 
 	const epsilon = 0.001
-	if math.Abs(totalPagoRequest-totalVenta) > epsilon {
+	if totalPagoRequest < (totalVenta - epsilon) {
 		return nil, datatype.NewBadRequestError(
-			fmt.Sprintf("El monto pagado (%.2f) no coincide con el total de la venta (%.2f).", totalPagoRequest, totalVenta),
+			fmt.Sprintf("El monto pagado (%.2f) es menor al total de la venta (%.2f).", totalPagoRequest, totalVenta),
 		)
 	}
 
@@ -413,7 +786,7 @@ func (v VentaRepository) RegistrarPagoVenta(ctx context.Context, ventaId *int, r
 	// Cuando el pago es exacto, cerramos la sesión (solo si aún está activa)
 	queryFinalizeUsoSala := `
         UPDATE uso_sala us 
-        SET estado = 'Finalizado', actualizado_en = NOW() 
+        SET actualizado_en = NOW() 
         FROM venta v 
         WHERE v.id = $1 
           AND us.id = v.uso_sala_id 
@@ -449,7 +822,9 @@ SELECT
     v.estado,
     v.creado_en,
     v.actualizado_en, 
-
+	v.costo_tiempo_venta,
+	v.descuento_general,
+	v.observacion,
     -- Construye el objeto 'usuario' (el admin/cajero)
     json_build_object(
        'id',ua.id,
@@ -533,7 +908,6 @@ SELECT
 			'nombre',p.nombre,
 			'estado',p.estado,
 			'urlFoto',($1::text || p.id::text || '/' || p.foto),
-			'precio',p.precio, -- (Usando 'precio' de tu DDL)
 			'creadoEn',p.creado_en,
 			'actualizadoEn',p.actualizado_en,
 			'eliminadoEn',p.eliminado_en
@@ -547,6 +921,7 @@ SELECT
 			),
             'id',dv.id,
             'cantidad',dv.cantidad,
+            'descuento',dv.descuento,
             'precioVenta',dv.precio_venta
         )
     ORDER BY dv.id), '[]')
@@ -587,7 +962,7 @@ LIMIT 1
 	`
 	var item domain.Venta
 	err := v.pool.QueryRow(ctx, query, fullHostname, *id).
-		Scan(&item.Id, &item.CodigoVenta, &item.Total, &item.Estado, &item.CreadoEn, &item.ActualizadoEn, &item.Usuario, &item.Cliente, &item.Sucursal, &item.Sala, &item.UsoSala, &item.Detalles, &item.Pagos)
+		Scan(&item.Id, &item.CodigoVenta, &item.Total, &item.Estado, &item.CreadoEn, &item.ActualizadoEn, &item.CostoTiempoVenta, &item.DescuentoGeneral, &item.Observacion, &item.Usuario, &item.Cliente, &item.Sucursal, &item.Sala, &item.UsoSala, &item.Detalles, &item.Pagos)
 	if err != nil {
 		log.Println("Error al obtener compra:", err)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -596,141 +971,6 @@ LIMIT 1
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 	return &item, nil
-}
-
-func (v VentaRepository) ListarVentas(ctx context.Context, filtros map[string]string) (*[]domain.VentaInfo, error) {
-	var filters []string
-	var args []interface{}
-	var j = 1
-	if usuarioIdStr := filtros["usuarioId"]; usuarioIdStr != "" {
-		usuarioId, err := strconv.Atoi(usuarioIdStr)
-		if err != nil {
-			log.Println("Error al convertir usuarioId a int:", err)
-			return nil, datatype.NewBadRequestError("El valor de usuarioId no es válido")
-		}
-		filters = append(filters, fmt.Sprintf("v.usuario_id = $%d", j))
-		args = append(args, usuarioId)
-		j++
-	}
-
-	if sucursalIdStr := filtros["sucursalId"]; sucursalIdStr != "" {
-		sucursalId, err := strconv.Atoi(sucursalIdStr)
-		if err != nil {
-			log.Println("Error al convertir sucursalId a int:", err)
-			return nil, datatype.NewBadRequestError("El valor de sucursalId no es válido")
-		}
-		filters = append(filters, fmt.Sprintf("s1.id = $%d", j))
-		args = append(args, sucursalId)
-		j++
-	}
-
-	if salaIdStr := filtros["salaId"]; salaIdStr != "" {
-		salaId, err := strconv.Atoi(salaIdStr)
-		if err != nil {
-			log.Println("Error al convertir salaId a int:", err)
-			return nil, datatype.NewBadRequestError("El valor de salaId no es válido")
-		}
-		filters = append(filters, fmt.Sprintf("s2.id = $%d", j))
-		args = append(args, salaId)
-		j++
-	}
-
-	if usoSalaIdStr := filtros["usoSalaId"]; usoSalaIdStr != "" {
-		usoSalaId, err := strconv.Atoi(usoSalaIdStr)
-		if err != nil {
-			log.Println("Error al convertir usoSalaId a int:", err)
-			return nil, datatype.NewBadRequestError("El valor de usoSalaId no es válido")
-		}
-		filters = append(filters, fmt.Sprintf("us.id = $%d", j))
-		args = append(args, usoSalaId)
-		j++
-	}
-	if estado := filtros["estado"]; estado != "" {
-		filters = append(filters, fmt.Sprintf("v.estado = $%d", j))
-		args = append(args, estado)
-		j++
-	}
-	query := `
-	SELECT 
-		v.id,
-		v.codigo_venta,
-		v.total,
-		v.estado,
-		v.creado_en,
-		v.actualizado_en,
-		json_build_object(
-		   'id',ua.id,
-		   'username',ua.username
-		) AS usuario,
-		json_build_object(
-			'id', c.id,
-			'nombres', c.nombres,
-			'apellidos', c.apellidos,
-			'codigoPais', c.codigo_pais,
-			'celular', c.celular,
-			'fechaNacimiento', c.fecha_nacimiento,
-			'estado', c.estado,
-			'creadoEn', c.creado_en
-		) AS cliente,
-		jsonb_build_object(
-			'id', s1.id,
-			'nombre', s1.nombre,
-			'estado', s1.estado,
-			'creadoEn', s1.creado_en
-		) AS sucursal,
-		jsonb_build_object(
-			'id',s2.id,
-			'nombre',s2.nombre,
-			'estado',s2.estado,
-			'creadoEn',s2.creado_en,
-			'actualizadoEn',s2.actualizado_en,
-			'eliminadoEn',s2.eliminado_en,
-			'dispositivo',jsonb_build_object(
-				'id', d.id,
-				'dispositivoId', d.dispositivo_id,
-				'nombre', d.nombre,
-				'estado', d.estado,
-				'creadoEn', d.creado_en,
-				'usuario', COALESCE(
-				jsonb_build_object(
-					'id', u.id,
-					'username', u.username
-				), '{}'::jsonb)
-			)
-		) AS sala
-	FROM  venta v
-	LEFT JOIN public.usuario_admin ua on v.usuario_id = ua.id
-	LEFT JOIN public.cliente c on v.cliente_id = c.id
-	LEFT JOIN public.sucursal s1 on v.sucursal_id = s1.id
-	LEFT JOIN public.sala s2 on v.sala_id = s2.id
-	LEFT JOIN public.dispositivo d on s2.dispositivo_id = d.id
-	LEFT JOIN public.usuario u on d.usuario_id = u.id
-	LEFT JOIN public.uso_sala us on v.uso_sala_id = us.id
-	`
-	if len(filters) > 0 {
-		query += " WHERE " + strings.Join(filters, " AND ")
-	}
-	query += `
-GROUP BY v.id,c.id,d.id,ua.id,s1.id,s2.id,u.id
-ORDER BY v.id
-`
-	rows, err := v.pool.Query(ctx, query, args...)
-	if err != nil {
-		return nil, datatype.NewInternalServerErrorGeneric()
-	}
-	defer rows.Close()
-	list := make([]domain.VentaInfo, 0)
-	for rows.Next() {
-		var item domain.VentaInfo
-		err := rows.Scan(&item.Id, &item.CodigoVenta, &item.Total, &item.Estado, &item.CreadoEn, &item.ActualizadoEn, &item.Usuario, &item.Cliente, &item.Sucursal, &item.Sala)
-		if err != nil {
-			log.Println("Error al obtener lista de venta:", err)
-			return nil, datatype.NewInternalServerErrorGeneric()
-		}
-		list = append(list, item)
-	}
-
-	return &list, nil
 }
 
 func NewVentaRepository(pool *pgxpool.Pool) *VentaRepository {

@@ -59,6 +59,7 @@ type AjusteInventarioInfo struct {
 	Motivo     string        `json:"motivo"`
 	Usuario    UsuarioSimple `json:"usuario"`
 	Sucursal   SucursalInfo  `json:"sucursal"`
+	Fecha      time.Time     `json:"fecha"`
 	//Detalles   []DetalleAjusteInventario `json:"detalles"`
 }
 

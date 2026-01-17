@@ -15,7 +15,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o multiroom_sucursal ./cmd
+RUN go build -o multiroom_sucursal "./cmd"
 
 FROM alpine:latest
 

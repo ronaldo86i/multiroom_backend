@@ -21,6 +21,7 @@ type SucursalRepository struct {
 }
 
 func (s SucursalRepository) RegistrarSucursal(ctx context.Context, request *domain.SucursalRequest) (*int, error) {
+	// 1. Iniciar Transacción
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		log.Println("Error al iniciar transacción")
@@ -33,8 +34,10 @@ func (s SucursalRepository) RegistrarSucursal(ctx context.Context, request *doma
 		}
 	}()
 
+	// 2. Insertar la Sucursal
 	var sucursalId int
-	query := `INSERT INTO sucursal (nombre,estado,pais_id) VALUES ($1, 'Activo',$2) RETURNING id`
+	query := `INSERT INTO sucursal (nombre, estado, pais_id) VALUES ($1, 'Activo', $2) RETURNING id`
+
 	err = tx.QueryRow(ctx, query, request.Nombre, request.PaisId).Scan(&sucursalId)
 	if err != nil {
 		log.Println("Ha ocurrido un error en la transacción:", err)
@@ -45,13 +48,26 @@ func (s SucursalRepository) RegistrarSucursal(ctx context.Context, request *doma
 				if pgErr.ConstraintName == "unique_nombre_sucursal" {
 					return nil, datatype.NewConflictError("Ya existe una sucursal con ese nombre en ese país")
 				}
-				// Otra violación única
 				return nil, datatype.NewInternalServerErrorGeneric()
 			}
 		}
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 
+	// 3. Asignar todos los productos existentes a esta nueva sucursal
+	queryAsignarProductos := `
+        INSERT INTO producto_sucursal (producto_id, sucursal_id, precio, estado)
+        SELECT id, $1, 0, 'Activo'
+        FROM producto
+    `
+
+	_, err = tx.Exec(ctx, queryAsignarProductos, sucursalId)
+	if err != nil {
+		log.Println("Error al asignar productos a la nueva sucursal:", err)
+		return nil, datatype.NewInternalServerErrorGeneric()
+	}
+
+	// 4. Confirmar Transacción
 	err = tx.Commit(ctx)
 	if err != nil {
 		log.Println("Error al confirmar transacción:", err)
@@ -105,7 +121,7 @@ func (s SucursalRepository) ModificarSucursal(ctx context.Context, id *int, requ
 	return nil
 }
 
-func (s SucursalRepository) ObtenerSucursalById(ctx context.Context, id *int) (*domain.SucursalDetail, error) {
+func (s SucursalRepository) ObtenerSucursalById(ctx context.Context, id *int) (*domain.Sucursal, error) {
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/paises/")
 	query := `
@@ -129,7 +145,7 @@ WHERE s.id=$2
 LIMIT 1
 `
 
-	var sucursal domain.SucursalDetail
+	var sucursal domain.Sucursal
 	err := s.pool.QueryRow(ctx, query, fullHostname, *id).Scan(&sucursal.Id, &sucursal.Nombre, &sucursal.Estado, &sucursal.CreadoEn, &sucursal.ActualizadoEn, &sucursal.EliminadoEn, &sucursal.Pais)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
