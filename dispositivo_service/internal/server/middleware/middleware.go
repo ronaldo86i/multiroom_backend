@@ -212,7 +212,6 @@ func VerifyPermission(requiredPermission string) fiber.Handler {
 			log.Println("Errores en la solicitud:", errs)
 			return c.Status(http.StatusInternalServerError).JSON(util.NewMessage("Error al verificar token"))
 		}
-		log.Println(statusCode, string(body))
 		if statusCode != http.StatusOK {
 			return c.Status(statusCode).SendString(string(body))
 		}
