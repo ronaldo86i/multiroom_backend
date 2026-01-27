@@ -190,8 +190,8 @@ LEFT JOIN public.detalle_compra dc on c.id = dc.compra_id
 LEFT JOIN public.producto pr on dc.producto_id = pr.id
 LEFT JOIN public.ubicacion ub on dc.ubicacion_id = ub.id
 WHERE c.id=$2 
-GROUP BY c.id,p.id,ua.id,s.id
-	`
+GROUP BY c.id,p.id,ua.id,s.id`
+
 	var item domain.Compra
 	err := c.pool.QueryRow(ctx, query, fullHostname, *id).
 		Scan(&item.Id, &item.CodigoCompra, &item.Estado, &item.CreadoEn, &item.ActualizadoEn, &item.EliminadoEn, &item.Usuario, &item.Sucursal, &item.Proveedor, &item.Detalles)
@@ -571,27 +571,30 @@ func (c CompraRepository) ConfirmarRecepcionCompra(ctx context.Context, id *int)
 	}
 
 	// Actualizar precios en la tabla 'producto_sucursal' ---
-	// Esta consulta actualiza el 'precio_venta' de todos los productos involucrados en esta compra.
+	// Actualizar precios en la tabla 'producto_sucursal'
 	queryUpdatePrecios := `
         UPDATE producto_sucursal AS ps
         SET 
             precio = dc.precio_venta
         FROM (
-            -- Obtenemos el precio de cada producto en esta compra
             SELECT DISTINCT ON (producto_id)
                 producto_id,
-                precio_venta,
-                precio_compra
+                precio_venta
             FROM detalle_compra
             WHERE compra_id = $1
         ) AS dc
-        WHERE ps.id = dc.producto_id;
+        WHERE ps.producto_id = dc.producto_id
+          AND ps.sucursal_id = (SELECT sucursal_id FROM compra WHERE id = $1);
     `
-	_, err = tx.Exec(ctx, queryUpdatePrecios, *id)
+
+	cmdTag, err := tx.Exec(ctx, queryUpdatePrecios, *id)
 	if err != nil {
 		log.Println("Error al actualizar precios de productos:", err)
 		return datatype.NewInternalServerErrorGeneric()
 	}
+
+	// Opcional: Loguear cuántos precios se actualizaron
+	log.Printf("Se actualizaron precios de %d productos en la sucursal", cmdTag.RowsAffected())
 
 	// Actualizar estado de compra
 	queryUpdateCompra := `UPDATE compra SET estado = 'Completado', actualizado_en = CURRENT_TIMESTAMP WHERE id = $1`

@@ -69,7 +69,6 @@ func (v VentaRepository) ListarProductosVentas(ctx context.Context, filtros map[
              'nombre', p.nombre,
              'estado', p.estado,
              'urlFoto', ($1::text || p.id::text || '/' || p.foto),
-             'precio', p.precio,
              'esInventariable', p.es_inventariable,
              'creadoEn', p.creado_en,
              'actualizadoEn', p.actualizado_en,
@@ -350,15 +349,8 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 	}
 	// Actualizar uso de sala (Costo Tiempo) - Solo si aplica
 	if request.UsoSalaId != nil {
-		// Validamos que si hay UsoSala, la SalaId no debería ser nil (lógica de negocio),
-		// pero aquí confiamos en el request o la BD lanzará error de FK si está mal.
-
-		queryUsoSala := `
-            UPDATE uso_sala 
-            SET costo_tiempo = costo_tiempo + $1, 
-                actualizado_en = NOW() 
-            WHERE id = $2 
-              AND estado IN ('En uso', 'Pausado')`
+		// Validamos que si hay UsoSala, la SalaId no debería ser nil
+		queryUsoSala := `UPDATE uso_sala SET costo_tiempo = costo_tiempo + $1, actualizado_en = NOW() WHERE id = $2 AND estado IN ('En uso', 'Pausado') AND tipo = 'General'`
 
 		ct, err := tx.Exec(ctx, queryUsoSala, request.CostoTiempo, *request.UsoSalaId)
 		if err != nil {
@@ -851,26 +843,27 @@ SELECT
     ) AS sucursal,
 
     -- Construye el objeto 'sala' (con su dispositivo y usuario)
-    jsonb_build_object(
-       'id',s2.id,
-       'nombre',s2.nombre,
-       'estado',s2.estado,
-       'creadoEn',s2.creado_en,
-       'actualizadoEn',s2.actualizado_en,
-       'eliminadoEn',s2.eliminado_en,
-       'dispositivo',jsonb_build_object(
-          'id', d.id,
-          'dispositivoId', d.dispositivo_id,
-          'nombre', d.nombre,
-          'estado', d.estado,
-          'creadoEn', d.creado_en,
-          'usuario', COALESCE(
-          jsonb_build_object(
-             'id', u.id,
-             'username', u.username
-          ), '{}'::jsonb)
-       )
-    ) AS sala,
+    (CASE WHEN (s2.id IS NOT NULL) THEN
+		jsonb_build_object(
+			'id',s2.id,
+			'nombre',s2.nombre,
+			'estado',s2.estado,
+			'creadoEn',s2.creado_en,
+			'actualizadoEn',s2.actualizado_en,
+			'eliminadoEn',s2.eliminado_en,
+			'dispositivo',jsonb_build_object(
+				'id', d.id,
+				'dispositivoId', d.dispositivo_id,
+				'nombre', d.nombre,
+				'estado', d.estado,
+				'creadoEn', d.creado_en,
+				'usuario', COALESCE(
+			jsonb_build_object(
+				 'id', u.id,
+				 'username', u.username
+			), '{}'::jsonb)
+		)
+	) ELSE 'null'::jsonb END) AS sala,
 
     -- Construye el objeto 'uso' (uso_sala)
     (

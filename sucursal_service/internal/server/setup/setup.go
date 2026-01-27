@@ -138,7 +138,7 @@ func Init() {
 		services.Venta = service.NewVentaService(repositories.Venta)
 		services.MetodoPago = service.NewMetodoPagoService(repositories.MetodoPago)
 		services.ProductoCategoria = service.NewProductoCategoriaService(repositories.ProductoCategoria)
-		services.Reporte = service.NewReporteService(repositories.Venta)
+		services.Reporte = service.NewReporteService(repositories.Venta, repositories.Sucursal, repositories.Producto)
 		// Handlers
 		handlers.Pais = httpHandler.NewPaisHandler(services.Pais)
 		handlers.Sucursal = httpHandler.NewSucursalHandler(services.Sucursal)

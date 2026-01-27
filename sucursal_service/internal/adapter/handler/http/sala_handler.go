@@ -28,12 +28,16 @@ func (s SalaHandler) ObtenerListaUsoSalas(c *fiber.Ctx) error {
 }
 
 func (s SalaHandler) EliminarSalaById(c *fiber.Ctx) error {
-	salaId, _ := c.ParamsInt("salaId", 0)
-	if err := s.salaService.HabilitarSala(c.UserContext(), &salaId); err != nil {
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
+	}
+
+	if err := s.salaService.DeshabilitarSala(c.UserContext(), &salaId); err != nil {
 		return handleError(err)
 	}
 
-	err := s.salaService.EliminarSalaById(c.UserContext(), &salaId)
+	err = s.salaService.EliminarSalaById(c.UserContext(), &salaId)
 	if err != nil {
 		return handleError(err)
 	}
@@ -108,29 +112,9 @@ func (s SalaHandler) IncrementarTiempoUsoSala(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida"))
 	}
 
-	salaId, _ := c.ParamsInt("salaId", 0)
-
-	// Obtener sala
-	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
-	if err != nil {
-		return handleError(err)
-	}
-
-	// Validar rol y sucursal
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-		if sucursalId != sala.Sucursal.Id {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("La sala no pertenece a este usuario sucursal"))
-		}
-	case "":
-		// rol nil o no definido → se permite continuar
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
 	}
 
 	// Incrementar tiempo
@@ -138,8 +122,9 @@ func (s SalaHandler) IncrementarTiempoUsoSala(c *fiber.Ctx) error {
 		return handleError(err)
 	}
 
-	// Volver a obtener sala y publicar
-	if sala, err = s.salaService.ObtenerSalaById(c.UserContext(), &salaId); err != nil {
+	// Obtener sala y publicar
+	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
+	if err != nil {
 		return handleError(err)
 	}
 	publishSalaAsync(s.rabbitMQService, *sala, salaId)
@@ -148,29 +133,9 @@ func (s SalaHandler) IncrementarTiempoUsoSala(c *fiber.Ctx) error {
 }
 
 func (s SalaHandler) CancelarSala(c *fiber.Ctx) error {
-	salaId, _ := c.ParamsInt("salaId", 0)
-
-	// Obtener sala
-	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
-	if err != nil {
-		return handleError(err)
-	}
-
-	// Validar rol y sucursal
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-		if sucursalId != sala.Sucursal.Id {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("La sala no pertenece a este usuario sucursal"))
-		}
-	case "":
-		// rol nil o no definido → se permite continuar
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
 	}
 
 	// Cancelar sala
@@ -178,8 +143,9 @@ func (s SalaHandler) CancelarSala(c *fiber.Ctx) error {
 		return handleError(err)
 	}
 
-	// Volver a obtener sala y publicar
-	if sala, err = s.salaService.ObtenerSalaById(c.UserContext(), &salaId); err != nil {
+	// Obtener sala y publicar
+	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
+	if err != nil {
 		return handleError(err)
 	}
 	publishSalaAsync(s.rabbitMQService, *sala, salaId)
@@ -193,70 +159,26 @@ func (s SalaHandler) AsignarTiempoUsoSala(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida"))
 	}
 
-	salaId := request.SalaId
-
-	// Obtener sala
-	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
-	if err != nil {
-		return handleError(err)
-	}
-
-	// Validar rol y sucursal
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-		if sucursalId != sala.Sucursal.Id {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("La sala no pertenece a este usuario sucursal"))
-		}
-	case "":
-		// rol nil o no definido → se permite continuar
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
-	}
-
 	// Asignar tiempo
 	usoId, err := s.salaService.AsignarTiempoUsoSala(c.UserContext(), &request)
 	if err != nil {
 		return handleError(err)
 	}
 
-	// Volver a obtener sala y publicar
-	if sala, err = s.salaService.ObtenerSalaById(c.UserContext(), &salaId); err != nil {
+	// Obtener sala y publicar
+	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &request.SalaId)
+	if err != nil {
 		return handleError(err)
 	}
-	publishSalaAsync(s.rabbitMQService, *sala, salaId)
+	publishSalaAsync(s.rabbitMQService, *sala, request.SalaId)
 
 	return c.JSON(util.NewMessageData(domain.UsoSalaId{Id: *usoId}, "Se ha asignado tiempo de uso correctamente"))
 }
 
 func (s SalaHandler) PausarTiempoUsoSala(c *fiber.Ctx) error {
-	salaId, _ := c.ParamsInt("salaId", 0)
-
-	// Obtener sala
-	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
-	if err != nil {
-		return handleError(err)
-	}
-
-	// Validar rol y sucursal
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-		if sucursalId != sala.Sucursal.Id {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("La sala no pertenece a este usuario sucursal"))
-		}
-	case "":
-		// rol nil o no definido → se permite continuar
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
 	}
 
 	// Pausar sala
@@ -264,8 +186,9 @@ func (s SalaHandler) PausarTiempoUsoSala(c *fiber.Ctx) error {
 		return handleError(err)
 	}
 
-	// Volver a obtener sala y publicar
-	if sala, err = s.salaService.ObtenerSalaById(c.UserContext(), &salaId); err != nil {
+	// Obtener sala y publicar
+	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
+	if err != nil {
 		return handleError(err)
 	}
 	publishSalaAsync(s.rabbitMQService, *sala, salaId)
@@ -274,29 +197,9 @@ func (s SalaHandler) PausarTiempoUsoSala(c *fiber.Ctx) error {
 }
 
 func (s SalaHandler) ReanudarTiempoUsoSala(c *fiber.Ctx) error {
-	salaId, _ := c.ParamsInt("salaId", 0)
-
-	// Obtener sala
-	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
-	if err != nil {
-		return handleError(err)
-	}
-
-	// Validar rol y sucursal
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-		if sucursalId != sala.Sucursal.Id {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("La sala no pertenece a este usuario sucursal"))
-		}
-	case "":
-		// rol nil o no definido → se permite continuar
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
 	}
 
 	// Reanudar sala
@@ -304,8 +207,9 @@ func (s SalaHandler) ReanudarTiempoUsoSala(c *fiber.Ctx) error {
 		return handleError(err)
 	}
 
-	// Volver a obtener sala y publicar
-	if sala, err = s.salaService.ObtenerSalaById(c.UserContext(), &salaId); err != nil {
+	// Obtener sala y publicar
+	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
+	if err != nil {
 		return handleError(err)
 	}
 	publishSalaAsync(s.rabbitMQService, *sala, salaId)
@@ -338,7 +242,10 @@ func (s SalaHandler) ModificarSala(c *fiber.Ctx) error {
 	if err := c.BodyParser(&request); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("Petición inválida: datos incompletos o incorrectos"))
 	}
-	salaId, _ := c.ParamsInt("salaId", 0)
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
+	}
 
 	if err := s.salaService.ModificarSala(c.UserContext(), &salaId, &request); err != nil {
 		return handleError(err)
@@ -354,64 +261,24 @@ func (s SalaHandler) ModificarSala(c *fiber.Ctx) error {
 }
 
 func (s SalaHandler) ObtenerSalaById(c *fiber.Ctx) error {
-	salaId, _ := c.ParamsInt("salaId", 0)
-
+	salaId, err := c.ParamsInt("salaId", 0)
+	if err != nil || salaId <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(util.NewMessage("El 'id' de la sala debe ser un número válido mayor a 0"))
+	}
 	// Obtener sala
 	sala, err := s.salaService.ObtenerSalaById(c.UserContext(), &salaId)
 	if err != nil {
 		return handleError(err)
 	}
 
-	// Validar rol y sucursal
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-		if sucursalId != sala.Sucursal.Id {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("La sala no pertenece a este usuario sucursal"))
-		}
-	case "":
-		// rol nil o no definido → se permite continuar
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
-	}
-
 	return c.JSON(sala)
 }
 
 func (s SalaHandler) ObtenerListaSalas(c *fiber.Ctx) error {
-	var lista []domain.SalaInfo
-
-	rol, _ := c.Locals("rol").(string)
-	switch rol {
-	case "usuario-sucursal":
-		sucursalId, ok := c.Locals("sucursalId").(int)
-		if !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(util.NewMessage("sucursalId no válido o no presente"))
-		}
-
-		filtros := map[string]string{"sucursalId": fmt.Sprintf("%d", sucursalId)}
-		salas, err := s.salaService.ObtenerListaSalas(c.UserContext(), filtros)
-		if err != nil {
-			return handleError(err)
-		}
-		lista = *salas
-
-	case "":
-		// rol nil o no definido → usar filtros de la query
-		salas, err := s.salaService.ObtenerListaSalas(c.UserContext(), c.Queries())
-		if err != nil {
-			return handleError(err)
-		}
-		lista = *salas
-
-	default:
-		return c.Status(fiber.StatusForbidden).JSON(util.NewMessage("Rol no permitido"))
+	lista, err := s.salaService.ObtenerListaSalas(c.UserContext(), c.Queries())
+	if err != nil {
+		return handleError(err)
 	}
-
 	return c.JSON(lista)
 }
 
@@ -445,7 +312,6 @@ func (s SalaHandler) DeshabilitarSala(c *fiber.Ctx) error {
 	return c.JSON(util.NewMessage("Sala deshabilitada correctamente"))
 }
 
-// Constructor
 func NewSalaHandler(salaService port.SalaService, rabbitMQService port.RabbitMQService) *SalaHandler {
 	return &SalaHandler{salaService: salaService, rabbitMQService: rabbitMQService}
 }

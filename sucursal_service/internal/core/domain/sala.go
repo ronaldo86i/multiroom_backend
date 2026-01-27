@@ -17,9 +17,10 @@ type SalaRequest struct {
 }
 
 type UsoSalaRequest struct {
-	SalaId    int   `json:"salaId"`
-	ClienteId int   `json:"clienteId"`
-	TiempoUso int64 `json:"tiempoUso"`
+	Tipo      string `json:"tipo"`
+	SalaId    int    `json:"salaId"`
+	ClienteId int    `json:"clienteId"`
+	TiempoUso int64  `json:"tiempoUso"`
 }
 type UsoSalaId struct {
 	Id int64 `json:"id"`

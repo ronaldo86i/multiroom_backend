@@ -8,12 +8,49 @@ import (
 	"multiroom/sucursal-service/internal/core/port"
 	"multiroom/sucursal-service/internal/core/util"
 	"net/http"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type ReporteHandler struct {
 	reporteService port.ReporteService
+}
+
+func (r ReporteHandler) ReportePDFProductosVendidos(c *fiber.Ctx) error {
+	doc, err := r.reporteService.ReportePDFProductosVendidos(c.UserContext(), c.Queries())
+	if err != nil {
+		log.Print(err.Error())
+		var errorResponse *datatype.ErrorResponse
+		if errors.As(err, &errorResponse) {
+			return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
+		}
+		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
+	}
+
+	c.Response().Header.Set("Content-Type", "application/pdf")
+	c.Response().Header.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="reporte-productos-vendidos-%s.pdf"`, time.Now().Format("2006-01-02 03-04-05")))
+	c.Response().Header.Set("Content-Transfer-Encoding", "binary")
+
+	return c.Send(doc.GetBytes())
+}
+
+func (r ReporteHandler) ReportePDFVentas(c *fiber.Ctx) error {
+	doc, err := r.reporteService.ReportePDFVentas(c.UserContext(), c.Queries())
+	if err != nil {
+		log.Print(err.Error())
+		var errorResponse *datatype.ErrorResponse
+		if errors.As(err, &errorResponse) {
+			return c.Status(errorResponse.Code).JSON(util.NewMessage(errorResponse.Message))
+		}
+		return c.Status(http.StatusInternalServerError).JSON(util.NewMessage(err.Error()))
+	}
+
+	c.Response().Header.Set("Content-Type", "application/pdf")
+	c.Response().Header.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="reporte-ventas-%s.pdf"`, time.Now().String()))
+	c.Response().Header.Set("Content-Transfer-Encoding", "binary")
+
+	return c.Send(doc.GetBytes())
 }
 
 func (r ReporteHandler) ComprobantePDFVentaById(c *fiber.Ctx) error {

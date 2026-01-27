@@ -27,6 +27,11 @@ func (s SalaRepository) ObtenerListaUsoSalas(ctx context.Context, filtros map[st
 	var filters []string
 	var args []interface{}
 	i := 1
+
+	args = append(args, "General")
+	filters = append(filters, fmt.Sprintf("us.tipo = $%d", i))
+	i++
+
 	if fechaInicioStr := filtros["fechaInicio"]; fechaInicioStr != "" {
 		// Parsear fecha + hora + offset
 		fechaInicio, err := time.Parse(time.RFC3339, fechaInicioStr)
@@ -121,7 +126,13 @@ SELECT
 	) AS dispositivo,
     jsonb_build_object(
 		'id',us.id,
-		'cliente', (
+		'inicio', us.inicio,
+		'fin', us.fin,
+		'pausadoEn', us.pausado_en,
+		'duracionPausa', EXTRACT(EPOCH FROM COALESCE(us.duracion_pausa, '0')),
+		'tiempoUso', EXTRACT(EPOCH FROM (COALESCE(us.fin, NOW()) - us.inicio - COALESCE(us.duracion_pausa, '0'))),
+		'estado', us.estado,
+    		'cliente', (
 			CASE WHEN c.id IS NOT NULL THEN jsonb_build_object(
 				'id', c.id,
 				'nombres', c.nombres,
@@ -132,13 +143,7 @@ SELECT
 				'estado', c.estado,
 				'creadoEn', c.creado_en
 			) ELSE '{}'::jsonb END
-		),
-		'inicio', us.inicio,
-		'fin', us.fin,
-		'pausadoEn', us.pausado_en,
-		'duracionPausa', EXTRACT(EPOCH FROM COALESCE(us.duracion_pausa, '0')),
-		'tiempoUso', EXTRACT(EPOCH FROM (COALESCE(us.fin, NOW()) - us.inicio - COALESCE(us.duracion_pausa, '0'))),
-		'estado', us.estado
+		)
     ) AS uso
 FROM uso_sala us
 LEFT JOIN public.sala s on s.id = us.sala_id
@@ -621,12 +626,12 @@ func (s SalaRepository) AsignarTiempoUsoSala(ctx context.Context, request *domai
 
 	// Insertar el nuevo uso
 	insertQuery := `
-INSERT INTO uso_sala(sala_id,cliente_id,inicio,fin,estado,pausado_en,duracion_pausa)
-VALUES ($1, $2, NOW(), NOW() + ($3 * INTERVAL '1 second'), 'En uso', NULL, INTERVAL '0 second')
+INSERT INTO uso_sala(sala_id,cliente_id,inicio,fin,estado,pausado_en,duracion_pausa,tipo)
+VALUES ($1, $2, NOW(), NOW() + ($3 * INTERVAL '1 second'), 'En uso', NULL, INTERVAL '0 second',$4)
 RETURNING id`
 
 	var usoId int64
-	err = tx.QueryRow(ctx, insertQuery, request.SalaId, request.ClienteId, request.TiempoUso).Scan(&usoId)
+	err = tx.QueryRow(ctx, insertQuery, request.SalaId, request.ClienteId, request.TiempoUso, request.Tipo).Scan(&usoId)
 	if err != nil {
 		log.Println("Error al insertar uso_sala:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()

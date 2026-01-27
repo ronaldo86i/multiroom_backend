@@ -163,6 +163,10 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1Ventas.Post("/:ventaId/pagar", middleware.VerifyPermission("venta:cobrar"), s.handlers.Venta.RegistrarPagoVenta)
 	v1Ventas.Post("/:ventaId/anular", middleware.VerifyPermission("venta:anular"), s.handlers.Venta.AnularVentaById)
 
+	v1Reportes := v1.Group("/reportes")
+	v1Reportes.Use(middleware.HostnameMiddleware)
+	v1Reportes.Get("/ventas", middleware.VerifyPermission("venta:ver"), s.handlers.Reporte.ReportePDFVentas)
+	v1Reportes.Get("/productos/ventas", middleware.VerifyPermission("venta:ver"), s.handlers.Reporte.ReportePDFProductosVendidos)
 	// Metodos de Pagos
 	v1MetodosPagos := v1.Group("/metodos-pago")
 	v1MetodosPagos.Get("", middleware.VerifyPermission("metodo_pago:ver"), s.handlers.MetodoPago.ListarMetodosPago)

@@ -32,18 +32,20 @@ func (p ProductoRepository) ObtenerProductoSucursalById(ctx context.Context, id 
 		ps.id,
 		ps.precio,
 		ps.estado,
-	json_build_object(
-		'id', p.id,
-		'nombre', p.nombre,
-		'estado', p.estado,
-		'urlFoto', ($1::text || p.id::text || '/' || p.foto),
-		'esInventariable', p.es_inventariable,
-		'creadoEn', p.creado_en,
-		'actualizadoEn', p.actualizado_en,
-		'eliminadoEn', p.eliminado_en
+		i.stock AS cantidad,
+		json_build_object(
+			'id', p.id,
+			'nombre', p.nombre,
+			'estado', p.estado,
+			'urlFoto', ($1::text || p.id::text || '/' || p.foto),
+			'esInventariable', p.es_inventariable,
+			'creadoEn', p.creado_en,
+			'actualizadoEn', p.actualizado_en,
+			'eliminadoEn', p.eliminado_en
 	) as producto_info
 	FROM producto_sucursal ps
 	INNER JOIN producto p ON ps.producto_id = p.id
+	LEFT JOIN public.inventario i on ps.producto_id = i.producto_id
 	WHERE ps.id = $2
     `
 	var item domain.ProductoSucursalInfo
@@ -52,6 +54,7 @@ func (p ProductoRepository) ObtenerProductoSucursalById(ctx context.Context, id 
 		&item.Id,
 		&item.Precio,
 		&item.Estado,
+		&item.Cantidad,
 		&item.Producto,
 	)
 
@@ -100,24 +103,33 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/productos/")
 
-	// Validamos Sucursal
-	sucursalIdStr := filtros["sucursalId"]
-	if sucursalIdStr == "" {
-		return nil, datatype.NewBadRequestError("El parámetro sucursalId es obligatorio para listar precios.")
+	// 1. Validar Sucursal (AHORA ES OPCIONAL)
+	// Usamos un puntero *int. Si es nil, SQL recibirá NULL.
+	var sucursalId *int
+	if val, ok := filtros["sucursalId"]; ok && val != "" {
+		id, err := strconv.Atoi(val)
+		if err != nil {
+			return nil, datatype.NewBadRequestError("sucursalId inválido")
+		}
+		sucursalId = &id
 	}
 
-	sucursalId, err := strconv.Atoi(sucursalIdStr)
-	if err != nil {
-		return nil, datatype.NewBadRequestError("sucursalId inválido")
-	}
-
-	var filters []string
-	// $1 es hostname, $2 es sucursalId
+	// 2. Preparar Argumentos
+	// $1 = Hostname
+	// $2 = SucursalId (puede ser NULL)
 	var args = []interface{}{fullHostname, sucursalId}
-	var i = 3
+	var filters []string
+	var i = 3 // El siguiente parámetro dinámico será $3
 
-	// Filtro Categoría
-	if val, ok := filtros["categoriaId"]; ok {
+	// --- FILTRO ESTADO ---
+	if estado := filtros["estado"]; estado != "" {
+		filters = append(filters, fmt.Sprintf("ps.estado = $%d", i))
+		args = append(args, estado)
+		i++
+	}
+
+	// --- FILTRO CATEGORÍA ---
+	if val, ok := filtros["categoriaId"]; ok && val != "" {
 		if val == "null" {
 			filters = append(filters, "p.categoria_id IS NULL")
 		} else {
@@ -127,24 +139,26 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 				args = append(args, id)
 				i++
 			} else {
-				return nil, datatype.NewBadRequestError("El valor de categoriaId no es válido")
+				return nil, datatype.NewBadRequestError("CategoriaId inválido")
 			}
 		}
 	}
 
-	// Filtro Buscador (Opcional, por si buscan por nombre)
+	// --- FILTRO BUSCADOR ---
 	if busqueda, ok := filtros["q"]; ok && busqueda != "" {
 		filters = append(filters, fmt.Sprintf("p.nombre ILIKE $%d", i))
 		args = append(args, "%"+busqueda+"%")
 		i++
 	}
 
+	// 3. Query Base
 	query := `
-	SELECT 
-		ps.id,
-		ps.estado,
-		ps.precio,
-        json_build_object(
+    SELECT 
+       ps.id,
+       ps.estado,
+       ps.precio,
+       COALESCE(SUM(i.stock), 0) AS cantidad,
+       json_build_object(
             'id', p.id,
             'nombre', p.nombre,
             'estado', p.estado,
@@ -153,18 +167,32 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
             'creadoEn', p.creado_en,
             'actualizadoEn', p.actualizado_en,
             'eliminadoEn', p.eliminado_en
-        ) as producto_info
-	FROM producto_sucursal ps
-	INNER JOIN producto p ON ps.producto_id = p.id
-	WHERE ps.sucursal_id = $2
+       ) as producto_info
+    FROM producto_sucursal ps
+    INNER JOIN producto p ON ps.producto_id = p.id
+    
+    -- JOIN ANIDADO (Stock):
+    LEFT JOIN (
+        public.inventario i 
+        JOIN public.ubicacion u ON i.ubicacion_id = u.id
+             AND ($2::int IS NULL OR u.sucursal_id = $2)
+             AND u.estado = 'Activo' 
+    ) ON ps.producto_id = i.producto_id
+
+    WHERE
+      ($2::int IS NULL OR ps.sucursal_id = $2)
+      AND p.estado = 'Activo'
     `
 
+	// Concatenar filtros extra
 	if len(filters) > 0 {
 		query += " AND " + strings.Join(filters, " AND ")
 	}
 
-	query += ` ORDER BY p.nombre ASC` // Orden alfabético suele ser mejor para ventas
+	// Agrupar y Ordenar
+	query += ` GROUP BY ps.id, p.id ORDER BY p.nombre ASC`
 
+	// 4. Ejecutar
 	rows, err := p.pool.Query(ctx, query, args...)
 	if err != nil {
 		log.Println("Error query listar productos sucursal:", err)
@@ -175,19 +203,14 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 	list := make([]domain.ProductoSucursalInfo, 0)
 	for rows.Next() {
 		var item domain.ProductoSucursalInfo
-		// Asegúrate de que tu struct ProductoInfo tenga los tags correctos para recibir estos datos
-		err = rows.Scan(
-			&item.Id,
-			&item.Estado,
-			&item.Precio,
-			&item.Producto,
-		)
+		err = rows.Scan(&item.Id, &item.Estado, &item.Precio, &item.Cantidad, &item.Producto)
 		if err != nil {
-			log.Println("Error al escanear producto:", err)
+			log.Println("Error scan:", err)
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
 		list = append(list, item)
 	}
+
 	return &list, nil
 }
 
@@ -262,31 +285,52 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/productos/")
 
-	// 1. PREPARAR VARIABLES (Punteros para permitir nil/NULL)
-	// De esta forma, pgx enviará NULL a la base de datos si no hay filtro
-	var categoriaId *int
+	// =========================================================================
+	// 1. CONSTRUCCIÓN DEL SLICE 'ARGS'
+	// =========================================================================
+	// Orden estricto para coincidir con la Query:
+	// $1: fullHostname
+	// $2: categoriaId
+	// $3: sucursalId
+	// $4: fechaInicio
+	// $5: fechaFin
+
+	var args []interface{}
+	args = append(args, fullHostname) // $1
+
+	// --- $2: Categoría ---
 	if val, ok := filtros["categoriaId"]; ok && val != "" && val != "null" {
 		id, _ := strconv.Atoi(val)
-		categoriaId = &id
+		args = append(args, &id)
+	} else {
+		args = append(args, nil) // Enviamos NULL
 	}
 
-	var sucursalId *int
+	// --- $3: Sucursal ---
 	if val, ok := filtros["sucursalId"]; ok && val != "" {
 		id, _ := strconv.Atoi(val)
-		sucursalId = &id
+		args = append(args, &id)
+	} else {
+		args = append(args, nil)
 	}
 
-	var fechaInicio *string
+	// --- $4: Fecha Inicio ---
 	if val, ok := filtros["fechaInicio"]; ok && val != "" {
-		fechaInicio = &val
+		args = append(args, &val)
+	} else {
+		args = append(args, nil)
 	}
 
-	var fechaFin *string
+	// --- $5: Fecha Fin ---
 	if val, ok := filtros["fechaFin"]; ok && val != "" {
-		fechaFin = &val
+		args = append(args, &val)
+	} else {
+		args = append(args, nil)
 	}
 
-	// 2. QUERY ESTÁTICA
+	// =========================================================================
+	// 2. QUERY (Índices fijos $1..$5)
+	// =========================================================================
 	query := `
     SELECT 
         COALESCE(v_stats.total_dinero, 0) as total_ventas,
@@ -305,7 +349,7 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
             'eliminadoEn', p.eliminado_en
         ) as producto_info,
 
-        -- Ventas Diarias
+        -- A. Ventas Diarias
         COALESCE((
             SELECT json_agg(vd) FROM (
                 SELECT 
@@ -315,17 +359,15 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
                 JOIN venta v ON dv.venta_id = v.id
                 WHERE dv.producto_id = p.id 
                   AND v.estado = 'Completado'
-                  -- LOGICA SQL: Si el parametro $3 es NULL, ignora el filtro
                   AND ($3::int IS NULL OR v.sucursal_id = $3)
-                  AND ($4::date IS NULL OR v.creado_en >= $4::date)
-                  AND ($5::date IS NULL OR v.creado_en <= $5::date)
+                  AND ($4::date IS NULL OR v.creado_en::date >= $4::date)
+                  AND ($5::date IS NULL OR v.creado_en::date <= $5::date)
                 GROUP BY TO_CHAR(v.creado_en, 'YYYY-MM-DD')
                 ORDER BY fecha DESC
-                LIMIT 30 
             ) vd
         ), '[]') as ventas_diarias,
 
-        -- Compras Diarias
+        -- B. Compras Diarias
         COALESCE((
             SELECT json_agg(cd) FROM (
                 SELECT 
@@ -336,17 +378,16 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
                 WHERE dc.producto_id = p.id 
                   AND c.estado = 'Completado'
                   AND ($3::int IS NULL OR c.sucursal_id = $3)
-                  AND ($4::date IS NULL OR c.creado_en >= $4::date)
-                  AND ($5::date IS NULL OR c.creado_en <= $5::date)
+                  AND ($4::date IS NULL OR c.creado_en::date >= $4::date)
+                  AND ($5::date IS NULL OR c.creado_en::date <= $5::date)
                 GROUP BY TO_CHAR(c.creado_en, 'YYYY-MM-DD')
                 ORDER BY fecha DESC
-                LIMIT 30
             ) cd
         ), '[]') as compras_diarias
 
     FROM producto p
 
-    -- Stats Totales Venta
+    -- C. Totales Venta
     LEFT JOIN LATERAL (
         SELECT 
             SUM(dv.cantidad * dv.precio_venta) as total_dinero,
@@ -356,11 +397,11 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
         WHERE dv.producto_id = p.id 
           AND v.estado = 'Completado'
           AND ($3::int IS NULL OR v.sucursal_id = $3)
-          AND ($4::date IS NULL OR v.creado_en >= $4::date)
-          AND ($5::date IS NULL OR v.creado_en <= $5::date)
+          AND ($4::date IS NULL OR v.creado_en::date >= $4::date)
+          AND ($5::date IS NULL OR v.creado_en::date <= $5::date)
     ) v_stats ON true
 
-    -- Stats Totales Compra
+    -- D. Totales Compra
     LEFT JOIN LATERAL (
         SELECT 
             SUM(dc.cantidad * dc.precio_compra) as total_dinero,
@@ -370,18 +411,19 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
         WHERE dc.producto_id = p.id 
           AND c.estado = 'Completado'
           AND ($3::int IS NULL OR c.sucursal_id = $3)
-          AND ($4::date IS NULL OR c.creado_en >= $4::date)
-          AND ($5::date IS NULL OR c.creado_en <= $5::date)
+          AND ($4::date IS NULL OR c.creado_en::date >= $4::date)
+          AND ($5::date IS NULL OR c.creado_en::date <= $5::date)
     ) c_stats ON true
 
-    WHERE ($2::int IS NULL OR p.categoria_id = $2) -- Filtro Categoria Principal
+    WHERE ($2::int IS NULL OR p.categoria_id = $2) 
 
-    ORDER BY v_stats.total_cantidad DESC NULLS LAST, p.nombre ASC
+    ORDER BY v_stats.total_cantidad DESC NULLS LAST, p.nombre
     `
 
-	// 3. EJECUTAR
-	// Pasamos los punteros. Si son nil, PostgreSQL recibe NULL y la condición "IS NULL" se vuelve verdadera.
-	rows, err := p.pool.Query(ctx, query, fullHostname, categoriaId, sucursalId, fechaInicio, fechaFin)
+	// =========================================================================
+	// 3. EJECUCIÓN CON ARGS...
+	// =========================================================================
+	rows, err := p.pool.Query(ctx, query, args...)
 
 	if err != nil {
 		log.Println("Error query stats:", err)
@@ -402,7 +444,7 @@ func (p ProductoRepository) ListarProductosMasVendidos(ctx context.Context, filt
 			&item.ComprasDiarias,
 		)
 		if err != nil {
-			log.Println("Error al escanear estadísticas:", err)
+			log.Println("Error al  escanear:", err)
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
 		list = append(list, item)
