@@ -29,10 +29,9 @@ func (s *Server) initEndPointsHTTP(app *fiber.App) {
 
 func (s *Server) endPointsAPI(api fiber.Router) {
 	v1 := api.Group("/v1")
-	s.endPointsApiUsuarioSucursal(v1)
 
 	// ==========================================
-	// PAISES (Recurso: pais)
+	// PAÍSES (Recurso: pais)
 	// ==========================================
 	v1Paises := v1.Group("/paises")
 	v1Paises.Use(middleware.HostnameMiddleware)
@@ -183,29 +182,10 @@ func (s *Server) endPointsAPI(api fiber.Router) {
 	v1AppVersion.Put("/:appVersionId", middleware.VerifyPermission("app_version:editar"), s.handlers.AppVersion.ModificarVersion)
 }
 
-func (s *Server) endPointsApiUsuarioSucursal(api fiber.Router) {
-	// Mantenemos la lógica separada para usuarios de sucursal (POS, Terminales)
-	v1UsuarioSucursal := api.Group("/usuario-sucursal")
-	v1UsuarioSucursal.Use(middleware.HostnameMiddleware)
-
-	v1Salas := v1UsuarioSucursal.Group("/salas")
-	v1Salas.Get("", middleware.VerifyUsuarioSucursal, s.handlers.Sala.ObtenerListaSalas)
-	v1Salas.Get("/:salaId", middleware.VerifyUsuarioSucursal, s.handlers.Sala.ObtenerSalaById)
-
-	v1AccionesSalas := v1UsuarioSucursal.Group("/acciones/salas")
-	v1AccionesSalas.Use(middleware.HostnameMiddleware)
-	v1AccionesSalas.Post("", middleware.VerifyUsuarioSucursal, s.handlers.Sala.AsignarTiempoUsoSala)
-	v1AccionesSalas.Patch("/cancelar/:salaId", middleware.VerifyUsuarioSucursal, s.handlers.Sala.CancelarSala)
-	v1AccionesSalas.Patch("/pausar/:salaId", middleware.VerifyUsuarioSucursal, s.handlers.Sala.PausarTiempoUsoSala)
-	v1AccionesSalas.Patch("/reanudar/:salaId", middleware.VerifyUsuarioSucursal, s.handlers.Sala.ReanudarTiempoUsoSala)
-	v1AccionesSalas.Patch("/incrementar/:salaId", middleware.VerifyUsuarioSucursal, s.handlers.Sala.IncrementarTiempoUsoSala)
-}
-
 func (s *Server) initEndPointsWS(app *fiber.App) {
 	ws := app.Group("/ws")
 	v1 := ws.Group("/v1")
 	s.endPointsWS(v1)
-	s.endPointsWSUsuarioSucursal(v1)
 }
 
 func (s *Server) endPointsWS(api fiber.Router) {
@@ -214,10 +194,4 @@ func (s *Server) endPointsWS(api fiber.Router) {
 	// Reemplazado ADMIN por permiso de ver sala
 	v1Salas.Get("", middleware.VerifyPermission("sala:ver"), websocket.New(s.handlers.SalaWS.UsoSalas))
 	v1Salas.Get("/:salaId", middleware.VerifyPermission("sala:ver"), websocket.New(s.handlers.SalaWS.UsoSala))
-}
-
-func (s *Server) endPointsWSUsuarioSucursal(api fiber.Router) {
-	v1UsuarioSucursal := api.Group("/usuario-sucursal")
-	v1Salas := v1UsuarioSucursal.Group("/salas")
-	v1Salas.Get("", middleware.VerifyUsuarioSucursal, websocket.New(s.handlers.SalaWS.UsoSalasBySucursalId))
 }

@@ -97,10 +97,10 @@ func NewServer(handlers setup.Handler) *Server {
 
 func (s *Server) createHTTPApp() *fiber.App {
 	app := fiber.New(fiber.Config{
-		BodyLimit:             20 << 23,          // 160MB
-		ReadTimeout:           60 * time.Second,  // Aumentado
-		WriteTimeout:          60 * time.Second,  // Aumentado
-		IdleTimeout:           120 * time.Second, // Aumentado
+		BodyLimit:             20 << 23, // 160MB
+		ReadTimeout:           60 * time.Second,
+		WriteTimeout:          60 * time.Second,
+		IdleTimeout:           120 * time.Second,
 		DisableStartupMessage: true,
 		JSONEncoder:           json.Marshal,
 		JSONDecoder:           json.Unmarshal,
@@ -175,9 +175,9 @@ func (s *Server) createWebSocketApp() *fiber.App {
 	wsApp := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               "Multiroom Backend WS sucursal",
-		ReadTimeout:           0, // Sin timeout para WebSocket
-		WriteTimeout:          0, // Sin timeout para WebSocket
-		IdleTimeout:           0, // Sin timeout para WebSocket
+		ReadTimeout:           0,
+		WriteTimeout:          0,
+		IdleTimeout:           0,
 		ServerHeader:          "Multiroom-WS",
 		// Error handler para WebSocket
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
