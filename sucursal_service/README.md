@@ -91,18 +91,11 @@ El `Sucursal Service` es el corazón operativo y financiero del sistema Multiroo
 | `GET` | `/reportes/ventas` | `venta:ver` | PDF Resumen periodo. |
 | `GET` | `/ventas/:id/comprobante` | `venta:ver` | PDF Ticket individual. |
 
-### API Usuario Sucursal (`/usuario-sucursal`)
-Sub-API simplificada para terminales POS o empleados con permisos limitados.
-- `GET /salas`: Vista rápida de salas.
-- `POST /acciones/salas`: Control rápido de tiempo.
-- `PATCH /acciones/...`: Comandos de pausa/play/cancelar.
-
 ### WebSockets (`/ws/v1`)
 | Endpoint | Descripción |
 | :--- | :--- |
 | `/salas` | Monitoreo en tiempo real de todas las salas (Dashboard Admin). |
 | `/salas/:salaId` | Monitoreo específico de una sala. |
-| `/usuario-sucursal/salas` | Monitoreo para vista POS. |
 
 ## 4. Flujo Clave: Venta de Tiempo
 1. El operador selecciona una sala y un cliente.
