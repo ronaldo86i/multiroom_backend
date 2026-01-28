@@ -28,25 +28,30 @@ func (p ProductoRepository) ObtenerProductoSucursalById(ctx context.Context, id 
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/productos/")
 
 	query := `
-	SELECT 
-		ps.id,
-		ps.precio,
-		ps.estado,
-		i.stock AS cantidad,
-		json_build_object(
-			'id', p.id,
-			'nombre', p.nombre,
-			'estado', p.estado,
-			'urlFoto', ($1::text || p.id::text || '/' || p.foto),
-			'esInventariable', p.es_inventariable,
-			'creadoEn', p.creado_en,
-			'actualizadoEn', p.actualizado_en,
-			'eliminadoEn', p.eliminado_en
-	) as producto_info
-	FROM producto_sucursal ps
-	INNER JOIN producto p ON ps.producto_id = p.id
-	LEFT JOIN public.inventario i on ps.producto_id = i.producto_id
-	WHERE ps.id = $2
+    SELECT 
+       ps.id,
+       ps.precio,
+       ps.estado,
+       -- Sumamos el stock total de todas las ubicaciones de ESTA sucursal
+       COALESCE(SUM(i.stock), 0) as stock,
+       json_build_object(
+          'id', p.id,
+          'nombre', p.nombre,
+          'estado', p.estado,
+          'urlFoto', ($1::text || p.id::text || '/' || p.foto),
+          'esInventariable', p.es_inventariable,
+          'creadoEn', p.creado_en,
+          'actualizadoEn', p.actualizado_en,
+          'eliminadoEn', p.eliminado_en
+       ) as producto_info
+    FROM producto_sucursal ps
+    INNER JOIN producto p ON ps.producto_id = p.id
+    LEFT JOIN (
+        public.inventario i
+        JOIN public.ubicacion u ON i.ubicacion_id = u.id AND u.estado = 'Activo'
+    ) ON ps.producto_id = i.producto_id AND ps.sucursal_id = u.sucursal_id
+    WHERE ps.id = $2
+    GROUP BY ps.id, p.id
     `
 	var item domain.ProductoSucursalInfo
 	// Escaneo directo a la estructura anidada
@@ -54,7 +59,7 @@ func (p ProductoRepository) ObtenerProductoSucursalById(ctx context.Context, id 
 		&item.Id,
 		&item.Precio,
 		&item.Estado,
-		&item.Cantidad,
+		&item.Stock,
 		&item.Producto,
 	)
 
@@ -157,7 +162,7 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
        ps.id,
        ps.estado,
        ps.precio,
-       COALESCE(SUM(i.stock), 0) AS cantidad,
+       COALESCE(SUM(i.stock), 0),
        json_build_object(
             'id', p.id,
             'nombre', p.nombre,
@@ -203,7 +208,7 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 	list := make([]domain.ProductoSucursalInfo, 0)
 	for rows.Next() {
 		var item domain.ProductoSucursalInfo
-		err = rows.Scan(&item.Id, &item.Estado, &item.Precio, &item.Cantidad, &item.Producto)
+		err = rows.Scan(&item.Id, &item.Estado, &item.Precio, &item.Stock, &item.Producto)
 		if err != nil {
 			log.Println("Error scan:", err)
 			return nil, datatype.NewInternalServerErrorGeneric()

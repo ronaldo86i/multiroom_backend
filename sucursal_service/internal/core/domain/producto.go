@@ -78,7 +78,7 @@ type ProductoSucursalInfo struct {
 	Id       int          `json:"id"`
 	Precio   float64      `json:"precio"`
 	Estado   string       `json:"estado"`
-	Cantidad *int         `json:"cantidad"`
+	Stock    int          `json:"stock"`
 	Producto ProductoInfo `json:"producto"`
 }
 
