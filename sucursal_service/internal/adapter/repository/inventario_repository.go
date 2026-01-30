@@ -622,66 +622,100 @@ func (i InventarioRepository) ListarInventario(ctx context.Context, filtros map[
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/productos/")
 
+	// 1. Validar Sucursal (Obligatorio)
+	var sucursalId int
+	if val := filtros["sucursalId"]; val != "" {
+		var err error
+		sucursalId, err = strconv.Atoi(val)
+		if err != nil {
+			return nil, datatype.NewBadRequestError("sucursalId inválido")
+		}
+	} else {
+		return nil, datatype.NewBadRequestError("El sucursalId es requerido")
+	}
+
+	// 2. Preparar Ubicación (Opcional - Nullable)
+	// Usamos un puntero *int. Si es nil, Postgres recibe NULL.
+	var ubicacionId *int
+	if val := filtros["ubicacionId"]; val != "" {
+		id, err := strconv.Atoi(val)
+		if err == nil {
+			ubicacionId = &id
+		}
+	}
+
+	// 3. Definir Argumentos Fijos
+	// $1 = Hostname
+	// $2 = SucursalId
+	// $3 = UbicacionId (Puede ser NULL)
+	args := []interface{}{fullHostname, sucursalId, ubicacionId}
+
+	// 4. Filtros Dinámicos (Para el WHERE)
+	// Empezamos en 4 porque ya usamos $1, $2 y $3
 	var filters []string
-	var args = []interface{}{fullHostname}
-	var j = 2
-	if sucursalIdStr := filtros["sucursalId"]; sucursalIdStr != "" {
-		sucursalId, err := strconv.Atoi(sucursalIdStr)
-		if err != nil {
-			log.Println("Error al convertir sucursalId a int:", err)
-			return nil, datatype.NewBadRequestError("El valor de sucursalId no es válido")
-		}
-		filters = append(filters, fmt.Sprintf("s.id = $%d", j))
-		args = append(args, sucursalId)
-		j++
+	paramIndex := 4
+
+	// Filtros base del WHERE
+	filters = append(filters, "ps.sucursal_id = $2")
+	filters = append(filters, "p.estado = 'Activo'")
+
+	// Filtro extra: Buscador (Opcional)
+	if busqueda := filtros["q"]; busqueda != "" {
+		filters = append(filters, fmt.Sprintf("p.nombre ILIKE $%d", paramIndex))
+		args = append(args, "%"+busqueda+"%")
+		paramIndex++
 	}
 
-	if ubicacionIdStr := filtros["ubicacionId"]; ubicacionIdStr != "" {
-		ubicacionId, err := strconv.Atoi(ubicacionIdStr)
-		if err != nil {
-			log.Println("Error al convertir ubicacionId a int:", err)
-			return nil, datatype.NewBadRequestError("El valor de ubicacionId no es válido")
-		}
-		filters = append(filters, fmt.Sprintf("u.id = $%d", j))
-		args = append(args, ubicacionId)
-		j++
-	}
-
+	// 5. Query
+	// Nota el truco en el LEFT JOIN: ($3::int IS NULL OR i.ubicacion_id = $3)
 	query := `
-SELECT 
-    i.id,
-    i.stock,
-	json_build_object(
-		'id',p.id,
-		'nombre',p.nombre,
-		'estado',p.estado,
-		'urlFoto',($1::text || p.id::text || '/' || p.foto),
-		'creadoEn',p.creado_en,
-		'actualizadoEn',p.actualizado_en,
-		'eliminadoEn',p.eliminado_en
-	) AS producto,
-	json_build_object(
-		'id',u.id,
-		'nombre',u.nombre,
-		'estado',u.estado,
-		'esVendible',u.es_vendible,
-		'prioridadVenta',u.prioridad_venta
-	) AS ubicacion
-FROM inventario i
-LEFT JOIN public.producto p on p.id = i.producto_id
-LEFT JOIN public.ubicacion u on i.ubicacion_id = u.id
-LEFT JOIN public.sucursal s on s.id = u.sucursal_id
-`
+    SELECT 
+        COALESCE(i.id, 0), 
+        COALESCE(i.stock, 0) AS stock,
+        json_build_object(
+           'id', p.id,
+           'nombre', p.nombre,
+           'estado', p.estado,
+           'urlFoto', ($1::text || p.id::text || '/' || p.foto),
+           'esInventariable', p.es_inventariable,
+           'creadoEn', p.creado_en,
+           'actualizadoEn', p.actualizado_en,
+           'eliminadoEn', p.eliminado_en
+        ) AS producto,
+
+        CASE 
+            WHEN u.id IS NOT NULL THEN
+                json_build_object(
+                   'id', u.id,
+                   'nombre', u.nombre,
+                   'estado', u.estado,
+                   'esVendible', u.es_vendible,
+                   'prioridadVenta', u.prioridad_venta
+                )
+            ELSE NULL 
+        END AS ubicacion
+
+    FROM producto_sucursal ps
+    INNER JOIN producto p ON ps.producto_id = p.id
+    LEFT JOIN inventario i ON p.id = i.producto_id 
+         AND ($3::int IS NULL OR i.ubicacion_id = $3)
+    LEFT JOIN ubicacion u ON i.ubicacion_id = u.id
+    `
+
 	if len(filters) > 0 {
 		query += " WHERE " + strings.Join(filters, " AND ")
 	}
-	query += " ORDER BY i.producto_id,i.ubicacion_id "
+
+	query += " ORDER BY p.nombre ASC"
+
+	// 6. Ejecución
 	rows, err := i.pool.Query(ctx, query, args...)
 	if err != nil {
-		log.Println("Error al ejecutar consulta:", err)
+		log.Println("Error al ejecutar consulta inventario:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 	defer rows.Close()
+
 	list := make([]domain.Inventario, 0)
 	for rows.Next() {
 		var item domain.Inventario

@@ -3,10 +3,10 @@ package domain
 import "time"
 
 type Inventario struct {
-	Id        int       `json:"id"`
-	Producto  Producto  `json:"producto"`
-	Ubicacion Ubicacion `json:"ubicacion"`
-	Stock     int64     `json:"stock"`
+	Id        int        `json:"id"`
+	Producto  Producto   `json:"producto"`
+	Ubicacion *Ubicacion `json:"ubicacion"`
+	Stock     int64      `json:"stock"`
 }
 
 // Definimos las "direcciones" del ajuste
