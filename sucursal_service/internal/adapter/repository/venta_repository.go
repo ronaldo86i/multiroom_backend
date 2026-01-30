@@ -332,6 +332,7 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 		}
 	}()
 
+	// 2. Validaciones iniciales
 	if request.SucursalId <= 0 {
 		return nil, datatype.NewBadRequestError("El ID de la sucursal es obligatorio.")
 	}
@@ -340,24 +341,19 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 	queryValidaSucursal := `SELECT EXISTS(SELECT 1 FROM sucursal WHERE id = $1 AND estado = 'Activo')`
 	err = tx.QueryRow(ctx, queryValidaSucursal, request.SucursalId).Scan(&sucursalExiste)
 	if err != nil {
-		log.Println("Error al validar sucursal:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 
 	if !sucursalExiste {
-		return nil, datatype.NewBadRequestError(fmt.Sprintf("La sucursal con id %d no existe o se encuentra inactiva.", request.SucursalId))
+		return nil, datatype.NewBadRequestError(fmt.Sprintf("La sucursal con id %d no existe o está inactiva.", request.SucursalId))
 	}
-	// Actualizar uso de sala (Costo Tiempo) - Solo si aplica
-	if request.UsoSalaId != nil {
-		// Validamos que si hay UsoSala, la SalaId no debería ser nil
-		queryUsoSala := `UPDATE uso_sala SET costo_tiempo = costo_tiempo + $1, actualizado_en = NOW() WHERE id = $2 AND estado IN ('En uso', 'Pausado') AND tipo = 'General'`
 
+	// 3. Actualizar uso de sala (si aplica)
+	if request.UsoSalaId != nil {
+		queryUsoSala := `UPDATE uso_sala SET costo_tiempo = costo_tiempo + $1, actualizado_en = NOW() 
+                         WHERE id = $2 AND estado IN ('En uso', 'Pausado') AND tipo = 'General'`
 		ct, err := tx.Exec(ctx, queryUsoSala, request.CostoTiempo, *request.UsoSalaId)
-		if err != nil {
-			log.Println("Error al actualizar uso_sala:", err)
-			return nil, datatype.NewInternalServerErrorGeneric()
-		}
-		if ct.RowsAffected() == 0 {
+		if err != nil || ct.RowsAffected() == 0 {
 			return nil, datatype.NewBadRequestError("La sesión de uso de sala no está activa.")
 		}
 	}
@@ -365,182 +361,140 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 	var totalVenta float64 = 0
 	var detallesParaGuardar [][]interface{}
 
-	queryGetPrecio := `SELECT precio FROM producto_sucursal WHERE producto_id = $1 AND  sucursal_id = $2`
+	// Consultas preparadas
+	queryGetProductoInfo := `
+        SELECT ps.precio, p.es_inventariable, p.nombre 
+        FROM producto_sucursal ps
+        JOIN producto p ON ps.producto_id = p.id
+        WHERE ps.producto_id = $1 AND ps.sucursal_id = $2`
 
-	// NOTA: Aquí usamos $2 que será request.SucursalId
 	queryFindStock := `
         SELECT i.stock, i.ubicacion_id
         FROM inventario i
         JOIN ubicacion u ON i.ubicacion_id = u.id
-        WHERE i.producto_id = $1 
-          AND u.sucursal_id = $2 
-          AND u.es_vendible = true 
-          AND u.estado = 'Activo'
-        ORDER BY u.prioridad_venta
-        FOR UPDATE OF i`
+        WHERE i.producto_id = $1 AND u.sucursal_id = $2 AND u.es_vendible = true AND u.estado = 'Activo'
+        ORDER BY u.prioridad_venta FOR UPDATE OF i`
 
-	queryRestaStock := `UPDATE inventario SET stock = stock - $1 WHERE producto_id = $2 AND ubicacion_id = $3`
-
-	// Bucle de Detalles
+	// 4. Bucle de Detalles de Venta
 	for _, detalleReq := range request.Detalles {
 		if detalleReq.Cantidad <= 0 {
 			return nil, datatype.NewBadRequestError("Cantidad debe ser mayor a cero")
 		}
 
-		if detalleReq.Descuento < 0 {
-			return nil, datatype.NewBadRequestError("El descuento por producto no puede ser negativo")
-		}
-
 		var precioVenta float64
-		err = tx.QueryRow(ctx, queryGetPrecio, detalleReq.ProductoId, request.SucursalId).Scan(&precioVenta)
+		var esInventariable bool
+		var nombreProducto string
+
+		err = tx.QueryRow(ctx, queryGetProductoInfo, detalleReq.ProductoId, request.SucursalId).Scan(&precioVenta, &esInventariable, &nombreProducto)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, datatype.NewBadRequestError(fmt.Sprintf("Producto ID %d no encontrado.", detalleReq.ProductoId))
+				return nil, datatype.NewBadRequestError(fmt.Sprintf("Producto %d no disponible en esta sucursal.", detalleReq.ProductoId))
 			}
 			return nil, datatype.NewInternalServerErrorGeneric()
 		}
 
 		subtotalBrutoLinea := precioVenta * float64(detalleReq.Cantidad)
 		if detalleReq.Descuento > subtotalBrutoLinea {
-			return nil, datatype.NewBadRequestError(fmt.Sprintf("El descuento (%.2f) no puede ser mayor al precio total del producto (%.2f)", detalleReq.Descuento, subtotalBrutoLinea))
+			return nil, datatype.NewBadRequestError(fmt.Sprintf("Descuento excesivo en %s", nombreProducto))
 		}
 
-		descuentoUnitario := 0.0
-		if detalleReq.Cantidad > 0 {
-			descuentoUnitario = detalleReq.Descuento / float64(detalleReq.Cantidad)
-		}
-
-		// Buscamos Stock usando request.SucursalId directamente
-		rows, err := tx.Query(ctx, queryFindStock, detalleReq.ProductoId, request.SucursalId)
-		if err != nil {
-			log.Println("Error al buscar stock:", err)
-			rows.Close()
-			return nil, datatype.NewInternalServerErrorGeneric()
-		}
-
-		var stockDisponibleList []stockDisponible
-		var stockTotalVendible = 0
-		for rows.Next() {
-			var s stockDisponible
-			if err := rows.Scan(&s.Stock, &s.UbicacionId); err != nil {
-				rows.Close()
-				return nil, datatype.NewInternalServerErrorGeneric()
-			}
-			if s.Stock > 0 {
-				stockDisponibleList = append(stockDisponibleList, s)
-				stockTotalVendible += s.Stock
-			}
-		}
-		rows.Close()
-
-		if stockTotalVendible < int(detalleReq.Cantidad) {
-			var productoNombre string
-			queryProducto := `SELECT nombre FROM producto WHERE id = $1 LIMIT 1`
-
-			err := tx.QueryRow(ctx, queryProducto, detalleReq.ProductoId).Scan(&productoNombre)
-			if err != nil {
-				return nil, datatype.NewInternalServerErrorGeneric()
-			}
-			return nil, datatype.NewBadRequestError(fmt.Sprintf("Stock insuficiente para producto %s. Solicitado: %d, Disponible: %d", productoNombre, detalleReq.Cantidad, stockTotalVendible))
-		}
-
+		descuentoUnitario := detalleReq.Descuento / float64(detalleReq.Cantidad)
 		totalVenta += subtotalBrutoLinea - detalleReq.Descuento
-		cantidadARestar := int(detalleReq.Cantidad)
 
-		for _, s := range stockDisponibleList {
-			if cantidadARestar == 0 {
-				break
-			}
-			cantidadDescontada := 0
-			if cantidadARestar <= s.Stock {
-				cantidadDescontada = cantidadARestar
-				cantidadARestar = 0
-			} else {
-				cantidadDescontada = s.Stock
-				cantidadARestar -= s.Stock
-			}
-
-			_, err = tx.Exec(ctx, queryRestaStock, cantidadDescontada, detalleReq.ProductoId, s.UbicacionId)
+		// --- Lógica de Inventario ---
+		if esInventariable {
+			rows, err := tx.Query(ctx, queryFindStock, detalleReq.ProductoId, request.SucursalId)
 			if err != nil {
-				log.Println("Error al restar stock:", err)
 				return nil, datatype.NewInternalServerErrorGeneric()
 			}
 
-			descuentoFraccion := descuentoUnitario * float64(cantidadDescontada)
+			var stockDisponibleList []stockDisponible
+			var stockTotalVendible = 0
+			for rows.Next() {
+				var s stockDisponible
+				err := rows.Scan(&s.Stock, &s.UbicacionId)
+				if err != nil {
+					log.Println("Error al escanear:", err)
+					return nil, datatype.NewInternalServerErrorGeneric()
+				}
+				if s.Stock > 0 {
+					stockDisponibleList = append(stockDisponibleList, s)
+					stockTotalVendible += s.Stock
+				}
+			}
+			rows.Close()
 
+			if stockTotalVendible < int(detalleReq.Cantidad) {
+				return nil, datatype.NewBadRequestError(fmt.Sprintf("Stock insuficiente para %s. Disponible: %d", nombreProducto, stockTotalVendible))
+			}
+
+			cantidadARestar := int(detalleReq.Cantidad)
+			for _, s := range stockDisponibleList {
+				if cantidadARestar == 0 {
+					break
+				}
+
+				cantidadDescontada := 0
+				if cantidadARestar <= s.Stock {
+					cantidadDescontada = cantidadARestar
+					cantidadARestar = 0
+				} else {
+					cantidadDescontada = s.Stock
+					cantidadARestar -= s.Stock
+				}
+
+				_, err = tx.Exec(ctx, `UPDATE inventario SET stock = stock - $1 WHERE producto_id = $2 AND ubicacion_id = $3`,
+					cantidadDescontada, detalleReq.ProductoId, s.UbicacionId)
+				if err != nil {
+					return nil, datatype.NewInternalServerErrorGeneric()
+				}
+
+				detallesParaGuardar = append(detallesParaGuardar, []interface{}{
+					nil, detalleReq.ProductoId, s.UbicacionId, cantidadDescontada, precioVenta, descuentoUnitario * float64(cantidadDescontada),
+				})
+			}
+		} else {
+			// Producto NO inventariable (Servicio): No resta stock, ubicación es NULL
 			detallesParaGuardar = append(detallesParaGuardar, []interface{}{
-				nil,
-				detalleReq.ProductoId,
-				s.UbicacionId,
-				cantidadDescontada,
-				precioVenta,
-				descuentoFraccion,
+				nil, detalleReq.ProductoId, nil, int(detalleReq.Cantidad), precioVenta, detalleReq.Descuento,
 			})
 		}
 	}
 
-	// Calcular Total Final
+	// 5. Totales Finales y Descuento General
 	totalVenta += request.CostoTiempo
-
-	if request.DescuentoGeneral < 0 {
-		return nil, datatype.NewBadRequestError("El descuento general no puede ser negativo")
-	}
 	if request.DescuentoGeneral > totalVenta {
-		return nil, datatype.NewBadRequestError("El descuento general no puede ser mayor al total de la venta")
+		return nil, datatype.NewBadRequestError("El descuento general supera el total de la venta.")
 	}
-
 	totalVenta -= request.DescuentoGeneral
 
-	// Insertar el Encabezado (venta)
+	// 6. Insertar Encabezado
 	var ventaId int
 	queryVenta := `
-        INSERT INTO venta (
-            codigo_venta, sucursal_id, sala_id, uso_sala_id, usuario_id, cliente_id, 
-            total, descuento_general, costo_tiempo_venta,observacion, estado, creado_en
-        )
-        VALUES (nextval('seq_codigo_venta'), $1, $2, $3, $4, $5, $6, $7, $8,$9,'Pendiente', NOW())
+        INSERT INTO venta (codigo_venta, sucursal_id, sala_id, uso_sala_id, usuario_id, cliente_id, total, descuento_general, costo_tiempo_venta, observacion, estado, creado_en)
+        VALUES (nextval('seq_codigo_venta'), $1, $2, $3, $4, $5, $6, $7, $8, $9, 'Completada', NOW())
         RETURNING id`
 
-	// CAMBIO IMPORTANTE: Pasamos request.SucursalId y request.SalaId directamente
-	err = tx.QueryRow(ctx, queryVenta,
-		request.SucursalId,       // $1
-		request.SalaId,           // $2 (Puede ser nil, pgx insertará NULL)
-		request.UsoSalaId,        // $3
-		request.UsuarioId,        // $4
-		request.ClienteId,        // $5
-		totalVenta,               // $6
-		request.DescuentoGeneral, // $7
-		request.CostoTiempo,      // $8
-		request.Observacion,      // $9
-	).Scan(&ventaId)
-
+	err = tx.QueryRow(ctx, queryVenta, request.SucursalId, request.SalaId, request.UsoSalaId, request.UsuarioId, request.ClienteId, totalVenta, request.DescuentoGeneral, request.CostoTiempo, request.Observacion).Scan(&ventaId)
 	if err != nil {
-		log.Println("Error al insertar encabezado de venta:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 
-	// Insertar los Detalles
+	// 7. Inserción Masiva de Detalles
 	for i := range detallesParaGuardar {
 		detallesParaGuardar[i][0] = ventaId
 	}
 
-	columnasDetalle := []string{"venta_id", "producto_id", "ubicacion_id", "cantidad", "precio_venta", "descuento"}
+	_, err = tx.CopyFrom(ctx, pgx.Identifier{"detalle_venta"},
+		[]string{"venta_id", "producto_id", "ubicacion_id", "cantidad", "precio_venta", "descuento"},
+		pgx.CopyFromRows(detallesParaGuardar))
 
-	_, err = tx.CopyFrom(
-		ctx,
-		pgx.Identifier{"detalle_venta"},
-		columnasDetalle,
-		pgx.CopyFromRows(detallesParaGuardar),
-	)
 	if err != nil {
-		log.Println("Error durante la inserción masiva de detalles:", err)
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 
-	// Commit
-	err = tx.Commit(ctx)
-	if err != nil {
-		log.Println("Error al confirmar transacción:", err)
+	// 8. Confirmar Transacción
+	if err = tx.Commit(ctx); err != nil {
 		return nil, datatype.NewInternalServerErrorGeneric()
 	}
 	committed = true
