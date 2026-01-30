@@ -412,7 +412,8 @@ func (v VentaRepository) RegistrarVenta(ctx context.Context, request *domain.Ven
 			var stockTotalVendible = 0
 			for rows.Next() {
 				var s stockDisponible
-				if err := rows.Scan(&s.Stock, &s.UbicacionId); err != nil {
+				err := rows.Scan(&s.Stock, &s.UbicacionId)
+				if err != nil {
 					log.Println("Error al escanear:", err)
 					return nil, datatype.NewInternalServerErrorGeneric()
 				}
