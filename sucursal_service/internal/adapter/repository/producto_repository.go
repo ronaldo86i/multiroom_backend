@@ -108,8 +108,7 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 	fullHostname := ctx.Value("fullHostname").(string)
 	fullHostname = fmt.Sprintf("%s%s", fullHostname, "/uploads/productos/")
 
-	// 1. Validar Sucursal (AHORA ES OPCIONAL)
-	// Usamos un puntero *int. Si es nil, SQL recibirá NULL.
+	// 1. Validar Sucursal
 	var sucursalId *int
 	if val, ok := filtros["sucursalId"]; ok && val != "" {
 		id, err := strconv.Atoi(val)
@@ -119,21 +118,18 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 		sucursalId = &id
 	}
 
-	// 2. Preparar Argumentos
-	// $1 = Hostname
-	// $2 = SucursalId (puede ser NULL)
+	// 2. Argumentos
 	var args = []interface{}{fullHostname, sucursalId}
 	var filters []string
-	var i = 3 // El siguiente parámetro dinámico será $3
+	var i = 3
 
-	// --- FILTRO ESTADO ---
+	// --- FILTROS ---
 	if estado := filtros["estado"]; estado != "" {
 		filters = append(filters, fmt.Sprintf("ps.estado = $%d", i))
 		args = append(args, estado)
 		i++
 	}
 
-	// --- FILTRO CATEGORÍA ---
 	if val, ok := filtros["categoriaId"]; ok && val != "" {
 		if val == "null" {
 			filters = append(filters, "p.categoria_id IS NULL")
@@ -149,20 +145,19 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
 		}
 	}
 
-	// --- FILTRO BUSCADOR ---
 	if busqueda, ok := filtros["q"]; ok && busqueda != "" {
 		filters = append(filters, fmt.Sprintf("p.nombre ILIKE $%d", i))
 		args = append(args, "%"+busqueda+"%")
 		i++
 	}
 
-	// 3. Query Base
+	// 3. Query Base (ESTRATEGIA SUBCONSULTA)
 	query := `
     SELECT 
        ps.id,
        ps.estado,
        ps.precio,
-       COALESCE(SUM(i.stock), 0),
+	   COALESCE(stocks.total_stock, 0)  AS stock,
        json_build_object(
             'id', p.id,
             'nombre', p.nombre,
@@ -173,29 +168,35 @@ func (p ProductoRepository) ListarProductosPorSucursal(ctx context.Context, filt
             'actualizadoEn', p.actualizado_en,
             'eliminadoEn', p.eliminado_en
        ) as producto_info
+
     FROM producto_sucursal ps
     INNER JOIN producto p ON ps.producto_id = p.id
     
-    -- JOIN ANIDADO (Stock):
+    -- AQUÍ LA SOLUCIÓN:
+    -- Calculamos el stock en una "tabla virtual" y la unimos con LEFT JOIN.
+    -- Esto asegura que el WHERE de ubicación no afecte a la tabla principal 'ps'.
     LEFT JOIN (
-        public.inventario i 
-        JOIN public.ubicacion u ON i.ubicacion_id = u.id
-             AND ($2::int IS NULL OR u.sucursal_id = $2)
-             AND u.estado = 'Activo' 
-    ) ON ps.producto_id = i.producto_id
+        SELECT 
+            i.producto_id, 
+            SUM(i.stock) as total_stock
+        FROM inventario i
+        INNER JOIN ubicacion u ON i.ubicacion_id = u.id
+        WHERE u.estado = 'Activo' 
+          AND ($2::int IS NULL OR u.sucursal_id = $2) -- Filtramos la sucursal AQUÍ dentro
+        GROUP BY i.producto_id
+    ) stocks ON ps.producto_id = stocks.producto_id
 
-    WHERE
+    WHERE 
       ($2::int IS NULL OR ps.sucursal_id = $2)
       AND p.estado = 'Activo'
     `
 
-	// Concatenar filtros extra
 	if len(filters) > 0 {
 		query += " AND " + strings.Join(filters, " AND ")
 	}
 
-	// Agrupar y Ordenar
-	query += ` GROUP BY ps.id, p.id ORDER BY p.nombre ASC`
+	// Ordenar (Ya no necesitamos GROUP BY gigante porque la agrupación se hizo en la subconsulta)
+	query += ` ORDER BY p.nombre ASC`
 
 	// 4. Ejecutar
 	rows, err := p.pool.Query(ctx, query, args...)
@@ -546,7 +547,7 @@ func (p ProductoRepository) ModificarProductoById(ctx context.Context, productoI
 		}
 	}()
 	query := `UPDATE producto SET nombre=$1,foto=$2,estado=$3,actualizado_en=now(), categoria_id=$4 WHERE id=$5`
-	ct, err := tx.Exec(ctx, query, request.Nombre, nombreArchivo, request.Estado, request.Precio, request.CategoriaId, *productoId)
+	ct, err := tx.Exec(ctx, query, request.Nombre, nombreArchivo, request.Estado, request.CategoriaId, *productoId)
 	if err != nil {
 		log.Println("Error al actualizar producto:", err)
 		var pgErr *pgconn.PgError
@@ -655,7 +656,7 @@ FROM producto p
 	if len(filters) > 0 {
 		query += " WHERE " + strings.Join(filters, " AND ")
 	}
-	query += ` ORDER BY p.id`
+	query += ` ORDER BY p.nombre`
 	rows, err := p.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, datatype.NewInternalServerErrorGeneric()
